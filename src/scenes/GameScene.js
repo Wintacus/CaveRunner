@@ -1,0 +1,321 @@
+import Phaser from 'phaser';
+import {
+  GAME_WIDTH,
+  GAME_HEIGHT,
+  TILE,
+  MAX_DELTA_MS,
+  CAMERA_LEAD,
+  CAMERA_LERP_Y,
+  RESPAWN_INVULN_MS,
+  SHIELD_INVULN_MS,
+  RESPAWN_DELAY_MS,
+  CRYSTAL_SCORE,
+  COLORS
+} from '../config/tuning.js';
+import { KEYS } from '../gfx/textures.js';
+import { Player } from '../objects/player.js';
+import { Director, parseEntities, findSpawn } from '../systems/director.js';
+import { Parallax } from '../systems/parallax.js';
+import { audio } from '../systems/audio.js';
+import { haptics } from '../systems/haptics.js';
+
+const STATE = { RUNNING: 'running', DYING: 'dying', WON: 'won' };
+
+export class GameScene extends Phaser.Scene {
+  constructor() {
+    super('Game');
+  }
+
+  create() {
+    this.state = STATE.RUNNING;
+    this.elapsed = 0;
+    this.deaths = 0;
+    this.crystals = 0;
+    this.score = 0;
+    this.hasShield = false;
+
+    // --- level ---------------------------------------------------------------
+    const map = this.make.tilemap({ key: 'level1' });
+    const tileset = map.addTilesetImage('cave_tiles', 'cave_tiles');
+    this.map = map;
+
+    this.parallax = new Parallax(this);
+    map.createLayer('decor', tileset).setDepth(-20).setAlpha(0.62); // sits behind the play space
+    this.ground = map.createLayer('ground', tileset).setDepth(0);
+    this.ground.setCollisionByProperty({ collides: true });
+
+    this.physics.world.setBounds(0, 0, map.widthInPixels, map.heightInPixels);
+    this.cameras.main.setBounds(0, 0, map.widthInPixels, map.heightInPixels);
+    this.cameras.main.setBackgroundColor(COLORS.void);
+
+    const objects = map.getObjectLayer('entities').objects;
+    this.spawnPoint = findSpawn(objects, new Phaser.Math.Vector2(160, 448));
+    this.director = new Director(this, parseEntities(objects, TILE));
+
+    // Respawn state: the level starts as its own checkpoint 0.
+    this.checkpoint = { x: this.spawnPoint.x, y: this.spawnPoint.y, score: 0, crystals: 0, shield: false };
+
+    // --- player --------------------------------------------------------------
+    this.player = new Player(this, this.spawnPoint.x, this.spawnPoint.y);
+    this.player.placeFeetAt(this.spawnPoint.x, this.spawnPoint.y);
+    this.player.onLand = () => this.#dust();
+
+    this.physics.add.collider(this.player, this.ground);
+    this.physics.add.overlap(this.player, this.director.groups.hazards, (_p, h) => this.#takeHit({ source: h }));
+    this.physics.add.overlap(this.player, this.director.groups.creatures, (_p, c) => this.#takeHit({ source: c }));
+    this.physics.add.overlap(this.player, this.director.groups.pickups, (_p, item) => this.#collect(item));
+    this.physics.add.overlap(this.player, this.director.groups.markers, (_p, marker) => this.#reachMarker(marker));
+
+    this.cameras.main.startFollow(this.player, true, 1, CAMERA_LERP_Y, CAMERA_LEAD - GAME_WIDTH / 2, 0);
+    this.cameras.main.fadeIn(240, 5, 7, 13);
+
+    // --- effects -------------------------------------------------------------
+    this.sparkles = this.add
+      .particles(0, 0, KEYS.spark, {
+        lifespan: 480,
+        speed: { min: 40, max: 190 },
+        scale: { start: 0.9, end: 0 },
+        alpha: { start: 1, end: 0 },
+        blendMode: Phaser.BlendModes.ADD,
+        emitting: false
+      })
+      .setDepth(22);
+
+    this.#bindInput();
+
+    this.scene.launch('Hud');
+    this.registry.set('score', 0);
+    this.registry.set('shield', false);
+
+    this.events.once('shutdown', () => this.scene.stop('Hud'));
+  }
+
+  // -------------------------------------------------------------------------
+  // Input: tap anywhere. No on-screen jump button — small touch targets are exactly
+  // the input-precision problem this genre learned to avoid.
+  // -------------------------------------------------------------------------
+  #bindInput() {
+    this.input.addPointer(2); // tolerate a second finger without dropping the first
+
+    this.input.on('pointerdown', (pointer) => {
+      if (this.#pointerHitsUi(pointer)) return; // the pause button is not a jump
+      if (this.state !== STATE.RUNNING) return;
+      this.player.requestJump();
+    });
+
+    this.input.on('pointerup', () => {
+      const stillHeld = this.input.manager.pointers.some((p) => p.isDown);
+      if (!stillHeld) this.player.releaseJump();
+    });
+
+    const kb = this.input.keyboard;
+    if (kb) {
+      const down = () => this.state === STATE.RUNNING && this.player.requestJump();
+      const up = () => this.player.releaseJump();
+      kb.on('keydown-SPACE', down);
+      kb.on('keyup-SPACE', up);
+      kb.on('keydown-UP', down);
+      kb.on('keyup-UP', up);
+    }
+  }
+
+  /** HUD buttons publish their screen rects; taps inside them must not also jump. */
+  #pointerHitsUi(pointer) {
+    const rects = this.registry.get('uiRects') || [];
+    return rects.some((r) => pointer.x >= r.x && pointer.x <= r.x + r.width && pointer.y >= r.y && pointer.y <= r.y + r.height);
+  }
+
+  // -------------------------------------------------------------------------
+  update(_time, delta) {
+    // Delta-time everything, capped: a 120Hz phone, a 60Hz phone and a phone resuming
+    // from the background must all produce the same run.
+    const dt = Math.min(delta, MAX_DELTA_MS);
+
+    if (this.state === STATE.RUNNING) {
+      this.elapsed += dt;
+      this.player.update(dt);
+    }
+
+    const cam = this.cameras.main;
+    this.director.update(dt, cam.scrollX, GAME_WIDTH);
+    this.parallax.update(cam);
+
+    // Falling into a pit costs the same as touching a hazard.
+    if (this.state === STATE.RUNNING && this.player.y > this.map.heightInPixels - 40) {
+      this.#takeHit({ fromPit: true });
+    }
+  }
+
+  // -------------------------------------------------------------------------
+  // Damage, shield, respawn
+  // -------------------------------------------------------------------------
+  #takeHit({ fromPit = false, source = null } = {}) {
+    if (this.state !== STATE.RUNNING) return;
+    if (this.player.invulnerable && !fromPit) return;
+
+    // Recorded for debugging / the autoplay harness: what actually killed the player.
+    this.lastHit = {
+      type: fromPit ? 'pit' : source?.def?.type ?? 'unknown',
+      x: Math.round(this.player.x),
+      y: Math.round(this.player.y),
+      shield: this.hasShield
+    };
+
+    // The shield absorbs the hit with no knockback and no interruption — the player just
+    // keeps running — and buys a brief window so a second nearby hazard can't double-dip.
+    if (this.hasShield && !fromPit) {
+      this.hasShield = false;
+      this.registry.set('shield', false);
+      this.player.makeInvulnerable(SHIELD_INVULN_MS);
+      this.sparkles.setParticleTint(COLORS.amber);
+      this.sparkles.emitParticleAt(this.player.x, this.player.y, 18);
+      audio.play('hit', { volume: 0.45, detune: 7 });
+      this.cameras.main.flash(160, 255, 194, 92, false);
+      return;
+    }
+
+    this.#die();
+  }
+
+  #die() {
+    this.state = STATE.DYING;
+    this.deaths += 1;
+    this.player.setFrozen(true);
+    this.player.setVisible(false);
+
+    this.sparkles.setParticleTint(COLORS.rose);
+    this.sparkles.emitParticleAt(this.player.x, this.player.y, 24);
+    this.cameras.main.shake(180, 0.012);
+    this.cameras.main.flash(120, 255, 93, 122, false);
+    audio.play('hit');
+    haptics.hit();
+
+    this.time.delayedCall(RESPAWN_DELAY_MS, () => this.#respawn());
+  }
+
+  #respawn() {
+    const cp = this.checkpoint;
+
+    this.score = cp.score;
+    this.crystals = cp.crystals;
+    this.hasShield = cp.shield;
+    this.registry.set('score', this.score);
+    this.registry.set('shield', this.hasShield);
+
+    this.director.rewindTo(cp.x);
+
+    this.player.setFrozen(false);
+    this.player.setVisible(true);
+    this.player.placeFeetAt(cp.x, cp.y);
+    this.player.makeInvulnerable(RESPAWN_INVULN_MS);
+
+    // Snap the camera so the respawn reads instantly instead of sliding into place.
+    const cam = this.cameras.main;
+    cam.stopFollow();
+    cam.setScroll(cp.x - CAMERA_LEAD, cam.scrollY);
+    cam.startFollow(this.player, true, 1, CAMERA_LERP_Y, CAMERA_LEAD - GAME_WIDTH / 2, 0);
+    cam.fadeIn(180, 5, 7, 13);
+
+    this.state = STATE.RUNNING;
+  }
+
+  // -------------------------------------------------------------------------
+  // Pickups and markers
+  // -------------------------------------------------------------------------
+  #collect(item) {
+    if (!item.active) return;
+
+    if (item.def.type === 'crystal') {
+      this.crystals += 1;
+      this.score += CRYSTAL_SCORE;
+      this.registry.set('score', this.score);
+      this.sparkles.setParticleTint(COLORS.teal);
+      this.sparkles.emitParticleAt(item.x, item.y, 6);
+      audio.play('crystal', { detune: Phaser.Math.Between(-1, 3) });
+    } else if (item.def.type === 'powerup') {
+      this.hasShield = true;
+      this.registry.set('shield', true);
+      this.sparkles.setParticleTint(COLORS.amber);
+      this.sparkles.emitParticleAt(item.x, item.y, 20);
+      audio.play('powerup');
+      haptics.powerup();
+      this.events.emit('toast', 'SHIELD READY', COLORS.amber);
+    }
+
+    this.director.consume(item);
+  }
+
+  #reachMarker(marker) {
+    if (!marker.active) return;
+
+    if (marker.def.type === 'checkpoint') {
+      if (marker.lit) return;
+      marker.light();
+      this.checkpoint = {
+        x: marker.def.x,
+        y: marker.def.y,
+        score: this.score,
+        crystals: this.crystals,
+        shield: this.hasShield
+      };
+      this.sparkles.setParticleTint(COLORS.teal);
+      this.sparkles.emitParticleAt(marker.x, marker.y - 60, 14);
+      audio.play('checkpoint');
+      haptics.checkpoint();
+      this.events.emit('toast', 'CHECKPOINT', COLORS.teal);
+      return;
+    }
+
+    if (marker.def.type === 'goal' && this.state === STATE.RUNNING) this.#win();
+  }
+
+  #win() {
+    this.state = STATE.WON;
+    this.player.setFrozen(true);
+    this.sparkles.setParticleTint(COLORS.ice);
+    this.sparkles.emitParticleAt(this.player.x, this.player.y, 40);
+    this.cameras.main.flash(240, 207, 233, 255, false);
+    audio.play('win');
+    haptics.win();
+
+    this.time.delayedCall(900, () => {
+      this.cameras.main.fadeOut(280, 5, 7, 13);
+      this.cameras.main.once('camerafadeoutcomplete', () => {
+        this.scene.start('Win', {
+          score: this.score,
+          crystals: this.crystals,
+          totalCrystals: this.director.defs.filter((d) => d.type === 'crystal').length,
+          deaths: this.deaths,
+          time: this.elapsed
+        });
+      });
+    });
+  }
+
+  #dust() {
+    this.sparkles.setParticleTint(COLORS.stoneLight);
+    this.sparkles.emitParticleAt(this.player.x, this.player.y + 18, 4);
+  }
+
+  // -------------------------------------------------------------------------
+  // Pause (from the HUD button, or from the app being backgrounded)
+  // -------------------------------------------------------------------------
+  pauseGame() {
+    if (this.scene.isPaused()) return;
+    this.player.releaseJump(); // never resume holding a jump the player let go of
+    this.scene.pause();
+    audio.suspend();
+  }
+
+  resumeGame() {
+    if (!this.scene.isPaused()) return;
+    this.scene.resume();
+    audio.resume();
+  }
+
+  restartLevel() {
+    audio.resume();
+    // The scene's own shutdown handler stops the HUD; create() launches a fresh one.
+    this.scene.restart();
+  }
+}

@@ -1,0 +1,13 @@
+node_modules/
+dist/
+.DS_Store
+*.log
+
+# Capacitor native projects are generated with `npx cap add ios|android`.
+# They are intentionally not committed for this first build.
+ios/
+android/
+.capacitor/
+
+# Screenshots produced by the test harnesses
+tools/shots/
