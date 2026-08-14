@@ -83,15 +83,18 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
       .setBlendMode(Phaser.BlendModes.ADD)
       .setVisible(false);
 
+    // Shards carry the runner's own forward speed. Emitted at rest they fall a third of a
+    // screen behind within a moment — out of exactly the area the player is watching —
+    // which is why the shatter was easy to miss no matter how long it lived.
     this.shards = scene.add
       .particles(0, 0, KEYS.shieldShard, {
-        lifespan: 620,
-        speed: { min: 90, max: 240 },
-        angle: { min: 0, max: 360 },
-        rotate: { min: -220, max: 220 },
-        scale: { start: 1, end: 0.2 },
+        lifespan: { min: 900, max: 1300 },
+        speedX: { min: RUN_SPEED - 150, max: RUN_SPEED + 130 },
+        speedY: { min: -300, max: 190 },
+        rotate: { min: -260, max: 260 },
+        scale: { start: 1.15, end: 0.25 },
         alpha: { start: 1, end: 0 },
-        gravityY: 420,
+        gravityY: 240,
         blendMode: Phaser.BlendModes.ADD,
         emitting: false
       })
@@ -120,12 +123,34 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
   breakShield() {
     if (!this.shielded) return;
     this.shielded = false;
-    this.shards.emitParticleAt(this.x, this.y, 14);
+    this.shards.emitParticleAt(this.x, this.y, 22);
+
+    // A shockwave off the character. A large shape that grows is what peripheral vision
+    // actually catches — the shards alone read only if you happen to be looking straight
+    // at the runner at that instant.
+    const wave = this.scene.add
+      .image(this.x, this.y, KEYS.shieldRing)
+      .setDepth(this.depth + 1)
+      .setBlendMode(Phaser.BlendModes.ADD)
+      .setScale(0.9)
+      .setAlpha(0.95);
+    this.scene.tweens.add({
+      targets: wave,
+      scale: 3,
+      alpha: 0,
+      duration: 460,
+      ease: 'Cubic.easeOut',
+      // Stay with the runner: at 330px/s a wave left behind is off the player's focus
+      // before it has finished expanding.
+      onUpdate: () => wave.setPosition(this.x, this.y),
+      onComplete: () => wave.destroy()
+    });
+
     this.scene.tweens.add({
       targets: this.bubble,
-      scale: 1.55,
+      scale: 1.8,
       alpha: 0,
-      duration: 220,
+      duration: 300,
       ease: 'Quad.easeOut',
       onComplete: () => this.bubble.setVisible(false)
     });

@@ -181,8 +181,14 @@ export class GameScene extends Phaser.Scene {
       this.player.makeInvulnerable(SHIELD_INVULN_MS);
       this.sparkles.setParticleTint(COLORS.amber);
       this.sparkles.emitParticleAt(this.player.x, this.player.y, 18);
-      audio.play('hit', { volume: 0.45, detune: 7 });
-      this.cameras.main.flash(160, 255, 194, 92, false);
+      audio.play('shieldBreak');
+      // Dimmer and shorter than a death flash: the shards, shockwave, toast and sound
+      // carry this moment, and a full-strength wash would hide the obstacle the player is
+      // already lining up a jump for.
+      this.cameras.main.flash(190, 205, 155, 75, false);
+      // The pickup announces itself with a chime and a toast; the loss deserves the same,
+      // or the one moment the shield actually matters passes unnoticed.
+      this.events.emit('toast', 'SHIELD LOST', COLORS.amber);
       return;
     }
 

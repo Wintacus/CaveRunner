@@ -25,6 +25,8 @@ const SOUNDS = {
   checkpoint: { type: 'arp', notes: [523, 659, 880], step: 0.075, dur: 0.2, gain: 0.14 },
   powerup: { type: 'arp', notes: [392, 523, 659, 784], step: 0.06, dur: 0.26, gain: 0.15 },
   hit: { type: 'hit', freq: [260, 55], dur: 0.34, gain: 0.24, noise: 0.3 },
+  /** Shield breaking: bright, glassy, falling — deliberately unlike the hit thud. */
+  shieldBreak: { type: 'shatter', notes: [1560, 1040, 690], step: 0.045, dur: 0.34, gain: 0.16, noise: 0.22 },
   win: { type: 'arp', notes: [523, 659, 784, 1046, 1318], step: 0.11, dur: 0.5, gain: 0.18 }
 };
 
@@ -118,6 +120,24 @@ class AudioManager {
           osc.start(t);
           osc.stop(t + def.dur + 0.02);
         });
+        break;
+      }
+      case 'shatter': {
+        // Descending glass shards plus a short bright noise wash.
+        def.notes.forEach((n, i) => {
+          const at = t + i * def.step;
+          const osc = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+          osc.type = 'triangle';
+          osc.frequency.setValueAtTime(n * pitch, at);
+          osc.frequency.exponentialRampToValueAtTime(n * pitch * 0.6, at + def.dur);
+          gain.gain.setValueAtTime(def.gain * volume * (1 - i * 0.22), at);
+          gain.gain.exponentialRampToValueAtTime(0.0001, at + def.dur);
+          osc.connect(gain).connect(this.master);
+          osc.start(at);
+          osc.stop(at + def.dur + 0.02);
+        });
+        this.#noise(t, 0.2, def.noise * volume, 5200);
         break;
       }
       case 'arp': {
