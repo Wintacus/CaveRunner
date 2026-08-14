@@ -146,6 +146,17 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
+  /**
+   * Single owner of shield state, so the flag, the HUD icon and the bubble on the runner
+   * can never disagree. `broke` shatters the bubble rather than just hiding it.
+   */
+  #setShield(active, { broke = false } = {}) {
+    this.hasShield = active;
+    this.registry.set('shield', active);
+    if (broke) this.player.breakShield();
+    else this.player.setShield(active);
+  }
+
   // -------------------------------------------------------------------------
   // Damage, shield, respawn
   // -------------------------------------------------------------------------
@@ -164,8 +175,9 @@ export class GameScene extends Phaser.Scene {
     // The shield absorbs the hit with no knockback and no interruption — the player just
     // keeps running — and buys a brief window so a second nearby hazard can't double-dip.
     if (this.hasShield && !fromPit) {
-      this.hasShield = false;
-      this.registry.set('shield', false);
+      // Shatter first, then start the invincibility flicker — otherwise the two cues
+      // overlap and neither reads.
+      this.#setShield(false, { broke: true });
       this.player.makeInvulnerable(SHIELD_INVULN_MS);
       this.sparkles.setParticleTint(COLORS.amber);
       this.sparkles.emitParticleAt(this.player.x, this.player.y, 18);
@@ -182,6 +194,7 @@ export class GameScene extends Phaser.Scene {
     this.deaths += 1;
     this.player.setFrozen(true);
     this.player.setVisible(false);
+    this.player.setShield(false); // hide the bubble with the runner; respawn restores it
 
     this.sparkles.setParticleTint(COLORS.rose);
     this.sparkles.emitParticleAt(this.player.x, this.player.y, 24);
@@ -198,15 +211,14 @@ export class GameScene extends Phaser.Scene {
 
     this.score = cp.score;
     this.crystals = cp.crystals;
-    this.hasShield = cp.shield;
     this.registry.set('score', this.score);
-    this.registry.set('shield', this.hasShield);
 
     this.director.rewindTo(cp.x);
 
     this.player.setFrozen(false);
     this.player.setVisible(true);
     this.player.placeFeetAt(cp.x, cp.y);
+    this.#setShield(cp.shield); // whatever was banked at this checkpoint comes back
     this.player.makeInvulnerable(RESPAWN_INVULN_MS);
 
     // Snap the camera so the respawn reads instantly instead of sliding into place.
@@ -233,8 +245,7 @@ export class GameScene extends Phaser.Scene {
       this.sparkles.emitParticleAt(item.x, item.y, 6);
       audio.play('crystal', { detune: Phaser.Math.Between(-1, 3) });
     } else if (item.def.type === 'powerup') {
-      this.hasShield = true;
-      this.registry.set('shield', true);
+      this.#setShield(true);
       this.sparkles.setParticleTint(COLORS.amber);
       this.sparkles.emitParticleAt(item.x, item.y, 20);
       audio.play('powerup');

@@ -59,6 +59,83 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
 
     this.onLand = null; // set by GameScene (dust + camera nudge)
     this.onJump = null;
+
+    this.#buildShieldBubble(scene);
+  }
+
+  // -------------------------------------------------------------------------
+  // Shield bubble
+  //
+  // The shield's only previous cue was a small icon in the HUD corner, which is
+  // peripheral vision the player never spends attention on mid-run. This puts the state
+  // where the eyes already are — on the runner — as a *shape*, so it survives both a
+  // glance and colour-blindness, with the amber rim light as reinforcement rather than
+  // the signal itself.
+  // -------------------------------------------------------------------------
+  #buildShieldBubble(scene) {
+    this.shielded = false;
+    this.bubbleT = 0;
+    // Sits just under the runner: the ring is wider than the sprite, so it stays fully
+    // visible while the character's own silhouette remains crisp on top.
+    this.bubble = scene.add
+      .image(this.x, this.y, KEYS.shieldRing)
+      .setDepth(this.depth - 1)
+      .setBlendMode(Phaser.BlendModes.ADD)
+      .setVisible(false);
+
+    this.shards = scene.add
+      .particles(0, 0, KEYS.shieldShard, {
+        lifespan: 620,
+        speed: { min: 90, max: 240 },
+        angle: { min: 0, max: 360 },
+        rotate: { min: -220, max: 220 },
+        scale: { start: 1, end: 0.2 },
+        alpha: { start: 1, end: 0 },
+        gravityY: 420,
+        blendMode: Phaser.BlendModes.ADD,
+        emitting: false
+      })
+      .setDepth(this.depth + 1);
+  }
+
+  /** Show or hide the bubble. Call whenever the shield is gained, restored or cleared. */
+  setShield(active) {
+    this.shielded = active;
+    this.bubble.setVisible(active && this.visible);
+    if (active) {
+      this.bubbleT = 0;
+      this.bubble.setScale(0.4).setAlpha(0);
+      this.scene.tweens.add({
+        targets: this.bubble,
+        scale: 1,
+        alpha: 1,
+        duration: 260,
+        ease: 'Back.easeOut'
+      });
+    }
+    this.setTexture(this.#poseTexture());
+  }
+
+  /** The shield just ate a hit: shatter it, so losing it is as legible as having it. */
+  breakShield() {
+    if (!this.shielded) return;
+    this.shielded = false;
+    this.shards.emitParticleAt(this.x, this.y, 14);
+    this.scene.tweens.add({
+      targets: this.bubble,
+      scale: 1.55,
+      alpha: 0,
+      duration: 220,
+      ease: 'Quad.easeOut',
+      onComplete: () => this.bubble.setVisible(false)
+    });
+    this.setTexture(this.#poseTexture());
+  }
+
+  /** Texture for the current pose, in the current shield state. */
+  #poseTexture() {
+    if (this.airborne && this.jumping) return this.shielded ? KEYS.playerJumpShield : KEYS.playerJump;
+    return this.shielded ? KEYS.playerShield : KEYS.player;
   }
 
   /** Feet-on-surface placement: the body is centred, so offset by half its height. */
@@ -67,7 +144,8 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     this.setScale(1, 1);
     this.setAngle(0);
     this.setAlpha(1);
-    this.setTexture(KEYS.player);
+    this.setTexture(this.shielded ? KEYS.playerShield : KEYS.player);
+    if (this.bubble) this.bubble.setVisible(this.shielded);
     this.coyoteTimer = 0;
     this.bufferTimer = 0;
     this.holdTimer = 0;
@@ -144,6 +222,7 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
 
     this.#updateInvuln(dt);
     this.#updatePose();
+    this.#updateShieldBubble(dt);
   }
 
   #startJump() {
@@ -154,7 +233,7 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     this.bufferTimer = 0;
     this.coyoteTimer = 0;
 
-    this.setTexture(KEYS.playerJump);
+    this.setTexture(this.shielded ? KEYS.playerJumpShield : KEYS.playerJump);
     this.scene.tweens.add({
       targets: this,
       scaleX: 0.82,
@@ -169,7 +248,7 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
   }
 
   #land() {
-    this.setTexture(KEYS.player);
+    this.setTexture(this.shielded ? KEYS.playerShield : KEYS.player);
     this.scene.tweens.add({
       targets: this,
       scaleX: 1.18,
@@ -193,6 +272,18 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     if (this.invulnTimer <= 0) {
       this.invulnTimer = 0;
       this.setAlpha(1);
+    }
+  }
+
+  #updateShieldBubble(dt) {
+    if (!this.bubble.visible) return;
+    this.bubbleT += dt;
+    this.bubble.setPosition(this.x, this.y);
+    // Spin plus a slow breath. The spin is what catches the eye without demanding it.
+    this.bubble.rotation += dt * 0.0009;
+    if (!this.scene.tweens.isTweening(this.bubble)) {
+      this.bubble.setScale(1 + 0.05 * Math.sin(this.bubbleT / 260));
+      this.bubble.setAlpha(0.8 + 0.2 * Math.sin(this.bubbleT / 210));
     }
   }
 

@@ -16,6 +16,10 @@ import { COLORS } from '../config/tuning.js';
 export const KEYS = {
   player: 'player',
   playerJump: 'player_jump',
+  playerShield: 'player_shield',
+  playerJumpShield: 'player_jump_shield',
+  shieldRing: 'shield_ring',
+  shieldShard: 'shield_shard',
   batOpen: 'bat_open',
   batClosed: 'bat_closed',
   spiderTuck: 'spider_tuck',
@@ -100,12 +104,18 @@ function polygon(ctx, points) {
 // Player — a lantern-lit runner. Rim-lit silhouette so it always reads against
 // the dark cave, with a bright core the invincibility flash can pulse.
 // ---------------------------------------------------------------------------
-function makePlayer(scene, key, { crouch = false } = {}) {
+/**
+ * @param {object} opts
+ * @param {boolean} opts.crouch  mid-jump tuck
+ * @param {number}  opts.rim     rim-light colour; amber marks the shield as a *secondary*
+ *                               cue reinforcing the bubble, never as the only signal
+ */
+function makePlayer(scene, key, { crouch = false, rim = COLORS.teal } = {}) {
   const [w, h] = [30, 42];
   canvasTexture(scene, key, w + 16, h + 16, (ctx) => {
     const ox = 8;
     const oy = 8;
-    glowBlob(ctx, ox + w / 2, oy + h / 2, 22, COLORS.teal, 0.5);
+    glowBlob(ctx, ox + w / 2, oy + h / 2, 22, rim, 0.5);
 
     // Body
     const bodyH = crouch ? h - 6 : h;
@@ -115,7 +125,7 @@ function makePlayer(scene, key, { crouch = false } = {}) {
     ctx.fill();
 
     // Rim light along the leading edge (right) and top.
-    ctx.strokeStyle = rgba(COLORS.teal, 0.95);
+    ctx.strokeStyle = rgba(rim, 0.95);
     ctx.lineWidth = 2.5;
     roundedRect(ctx, ox + 2, bodyY, w - 4, bodyH, 9);
     ctx.stroke();
@@ -133,7 +143,7 @@ function makePlayer(scene, key, { crouch = false } = {}) {
     ctx.fill();
 
     // Feet
-    ctx.fillStyle = rgba(COLORS.teal, 0.55);
+    ctx.fillStyle = rgba(rim, 0.55);
     roundedRect(ctx, ox + 4, oy + h - 5, 9, 5, 2);
     ctx.fill();
     roundedRect(ctx, ox + w - 13, oy + h - 5, 9, 5, 2);
@@ -427,6 +437,76 @@ function makeSpike(scene) {
 }
 
 // ---------------------------------------------------------------------------
+// Shield bubble
+//
+// A ring rather than a filled disc, so it never hides a hazard the player has to read,
+// and deliberately *asymmetric* — a perfectly even ring looks static no matter how fast
+// it spins, and the rotation is half the reason the cue reads in peripheral vision.
+// ---------------------------------------------------------------------------
+function makeShieldRing(scene) {
+  const size = 96;
+  const r = 36;
+  canvasTexture(scene, KEYS.shieldRing, size, size, (ctx) => {
+    const c = size / 2;
+
+    // Soft band of light around the rim.
+    const grad = ctx.createRadialGradient(c, c, r - 10, c, c, r + 8);
+    grad.addColorStop(0, rgba(COLORS.amber, 0));
+    grad.addColorStop(0.6, rgba(COLORS.amber, 0.32));
+    grad.addColorStop(1, rgba(COLORS.amber, 0));
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.arc(c, c, r + 8, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Crisp rim.
+    ctx.strokeStyle = rgba(COLORS.amber, 0.9);
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(c, c, r, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // Facets: brighter arcs at uneven intervals, which is what makes the spin visible.
+    ctx.lineWidth = 3.5;
+    ctx.lineCap = 'round';
+    for (const [from, len] of [
+      [0.15, 0.5],
+      [1.25, 0.32],
+      [2.6, 0.62],
+      [4.4, 0.24]
+    ]) {
+      ctx.strokeStyle = rgba(0xffffff, 0.75);
+      ctx.beginPath();
+      ctx.arc(c, c, r, from, from + len);
+      ctx.stroke();
+    }
+
+    // Highlight blooms where facets meet.
+    for (const a of [0.15, 2.6, 4.4]) {
+      glowBlob(ctx, c + Math.cos(a) * r, c + Math.sin(a) * r, 9, 0xffffff, 0.5);
+    }
+  });
+}
+
+/** A sliver of the bubble, thrown outward when the shield is spent. */
+function makeShieldShard(scene) {
+  canvasTexture(scene, KEYS.shieldShard, 20, 20, (ctx) => {
+    glowBlob(ctx, 10, 10, 9, COLORS.amber, 0.6);
+    polygon(ctx, [
+      [10, 1],
+      [16, 12],
+      [9, 18],
+      [5, 10]
+    ]);
+    ctx.fillStyle = rgba(COLORS.amber, 0.85);
+    ctx.fill();
+    ctx.strokeStyle = rgba(0xffffff, 0.9);
+    ctx.lineWidth = 1.4;
+    ctx.stroke();
+  });
+}
+
+// ---------------------------------------------------------------------------
 // Particles
 // ---------------------------------------------------------------------------
 function makeGlow(scene) {
@@ -535,6 +615,10 @@ function makeParallax(scene, height) {
 export function generateTextures(scene, viewHeight) {
   makePlayer(scene, KEYS.player);
   makePlayer(scene, KEYS.playerJump, { crouch: true });
+  makePlayer(scene, KEYS.playerShield, { rim: COLORS.amber });
+  makePlayer(scene, KEYS.playerJumpShield, { crouch: true, rim: COLORS.amber });
+  makeShieldRing(scene);
+  makeShieldShard(scene);
   makeBat(scene, KEYS.batOpen, true);
   makeBat(scene, KEYS.batClosed, false);
   makeSpider(scene, KEYS.spiderTuck, false);
