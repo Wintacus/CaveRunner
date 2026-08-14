@@ -5,7 +5,7 @@
   "type": "module",
   "description": "Cave Runner \u2014 a 2D side-scrolling auto-runner set in a bioluminescent cave.",
   "scripts": {
-    "assets": "node tools/build-tileset.mjs && node tools/build-level.mjs",
+    "assets": "node tools/build-tileset.mjs && node tools/build-icon.mjs && node tools/build-level.mjs",
     "dev": "npm run assets && vite",
     "build": "npm run assets && vite build",
     "preview": "vite preview --host",

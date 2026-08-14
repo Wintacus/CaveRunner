@@ -38,6 +38,11 @@ export class PreloadScene extends Phaser.Scene {
       label.setText(`loading ${Math.round(p * 100)}%`);
     });
 
+    // Resolve asset URLs against the deployed base rather than the current document URL:
+    // on GitHub Pages the game lives at /<repo>/, and a visit without the trailing slash
+    // would otherwise resolve relative paths against the domain root.
+    this.load.setBaseURL(import.meta.env.BASE_URL);
+
     this.load.image('cave_tiles', 'assets/tilesets/cave_tiles.png');
     this.load.tilemapTiledJSON('level1', 'assets/levels/level1.tmj');
   }
