@@ -91,6 +91,11 @@ for (const e of ENTITIES) {
     else if (top !== e.y) errors.push(`${e.type} at x=${e.x} sits at row ${e.y} but the surface there is row ${top}`);
   }
 
+  if (e.type === 'sign') {
+    if (isSolid(e.x, e.y)) errors.push(`sign "${e.text}" at (${e.x},${e.y}) is buried inside solid rock`);
+    if (!e.text) errors.push(`sign at (${e.x},${e.y}) has no text`);
+  }
+
   if (e.type === 'crystal' || e.type === 'powerup') {
     if (isSolid(e.x, e.y)) errors.push(`${e.type} at (${e.x},${e.y}) is buried inside solid rock`);
     if (e.y < CEIL_BOTTOM) errors.push(`${e.type} at (${e.x},${e.y}) is inside the ceiling`);

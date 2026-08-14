@@ -80,6 +80,9 @@ const objects = ENTITIES.map((e) => {
     case 'checkpoint':
       props.push(prop('index', e.index));
       break;
+    case 'sign':
+      props.push(prop('text', e.text));
+      break;
     case 'stalactite':
       props.push(prop('length', e.len * TILE));
       break;

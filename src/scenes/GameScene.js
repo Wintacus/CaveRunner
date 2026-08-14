@@ -50,7 +50,12 @@ export class GameScene extends Phaser.Scene {
 
     const objects = map.getObjectLayer('entities').objects;
     this.spawnPoint = findSpawn(objects, new Phaser.Math.Vector2(160, 448));
-    this.director = new Director(this, parseEntities(objects, TILE));
+
+    // Signs are plain world-space text, not pooled entities: there are two of them, they
+    // never collide with anything, and they exist for the whole level.
+    const defs = parseEntities(objects, TILE);
+    this.#buildSigns(defs.filter((d) => d.type === 'sign'));
+    this.director = new Director(this, defs.filter((d) => d.type !== 'sign'));
 
     // Respawn state: the level starts as its own checkpoint 0.
     this.checkpoint = { x: this.spawnPoint.x, y: this.spawnPoint.y, score: 0, crystals: 0, shield: false };
@@ -88,6 +93,39 @@ export class GameScene extends Phaser.Scene {
     this.registry.set('shield', false);
 
     this.events.once('shutdown', () => this.scene.stop('Hud'));
+  }
+
+  /**
+   * Instruction text standing in the cave itself, rather than a tutorial pop-up. The
+   * player reads it while running instead of before starting, and it costs no extra
+   * screen furniture. Placed above head height so it can never hide the floor or a hazard.
+   */
+  #buildSigns(signDefs) {
+    this.signs = signDefs.map((def) =>
+      this.add
+        .text(def.x, def.y, def.text, {
+          fontFamily: 'sans-serif',
+          fontSize: '30px',
+          fontStyle: 'bold',
+          color: '#ffffff',
+          align: 'center',
+          padding: { x: 24, y: 18 }
+        })
+        .setOrigin(0.5)
+        .setDepth(6)
+        .setAlpha(0)
+        .setShadow(0, 0, '#3fe0c8', 10, false, true)
+    );
+  }
+
+  /** Fade signs in and out at the screen edges so they arrive rather than pop. */
+  #updateSigns(cam) {
+    if (!this.signs) return;
+    for (const sign of this.signs) {
+      const fromLeft = sign.x - cam.scrollX;
+      const fromRight = cam.scrollX + GAME_WIDTH - sign.x;
+      sign.setAlpha(Phaser.Math.Clamp(Math.min(fromLeft, fromRight) / 150, 0, 1));
+    }
   }
 
   // -------------------------------------------------------------------------
@@ -139,6 +177,7 @@ export class GameScene extends Phaser.Scene {
     const cam = this.cameras.main;
     this.director.update(dt, cam.scrollX, GAME_WIDTH);
     this.parallax.update(cam);
+    this.#updateSigns(cam);
 
     // Falling into a pit costs the same as touching a hazard.
     if (this.state === STATE.RUNNING && this.player.y > this.map.heightInPixels - 40) {

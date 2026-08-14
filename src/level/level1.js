@@ -198,6 +198,23 @@ const creatures = [
   { type: 'bat', x: 766, yTop: 10, yBottom: 13, period: 2000, phase: 0.15 }
 ];
 
+/**
+ * Instruction signs for the opening run — plain words in the world rather than a tutorial
+ * pop-up, so they are read while playing instead of before it.
+ *
+ * Placement is derived from the jump model, not taste. A bare tap reaches 5.3 tiles flat,
+ * which clears every pit in segment 1, so "tap" is all the player needs at first. The
+ * step-up onto the ledge at 97-100 needs 148px of reach and a tap only delivers 132px at
+ * that height — it is the first jump in the level a tap cannot make, so the hold lesson
+ * lands just before it, at the moment it first matters.
+ *
+ * x avoids the decorative crystal vein at 88-89, which would sit behind the text.
+ */
+const signs = [
+  { type: 'sign', x: 12, y: 10, text: 'TAP TO JUMP' },
+  { type: 'sign', x: 82, y: 10, text: 'HOLD TO JUMP HIGHER' }
+];
+
 const progression = [
   { type: 'checkpoint', x: 166, y: 14, index: 1 },
   { type: 'checkpoint', x: 376, y: 14, index: 2 },
@@ -334,7 +351,7 @@ pitArc(776);
 trail(783, 791, 13, 3);
 trail(800, 810, 13, 3); // run-in to the goal at 812
 
-export const ENTITIES = [...progression, ...hazards, ...creatures, ...crystals];
+export const ENTITIES = [...progression, ...signs, ...hazards, ...creatures, ...crystals];
 
 /** Segment boundaries, used by the validator's pacing report. */
 export const SEGMENTS = [
