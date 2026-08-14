@@ -14,12 +14,20 @@ export const TILE = 32;
 /**
  * Constant auto-run speed. Fixed for this build — no ramping, no per-section variation.
  *
- * Raised from 300 after device testing: too much of the run was spent watching rather than
- * playing. Note that jump airtime is set by gravity alone, so horizontal reach scales with
- * this number — every pit gets easier as it goes up, which is why the pacing fix pairs a
- * modest speed bump with more obstacles rather than leaning on speed alone.
+ * 300 -> 330 -> 370 across two rounds of device testing; both times the note was that too
+ * much of the run was spent watching rather than playing.
+ *
+ * Jump airtime is set by gravity alone, so horizontal reach scales with this number and
+ * every pit gets *easier* as it goes up. Each bump therefore has to be paid for in the
+ * level: at 370 the pits are a tile wider than they were at 330, which lands them slightly
+ * harder than before rather than merely level. Change this and `npm run validate` re-checks
+ * every gap against the new reach.
+ *
+ * Reaction budget: the runner is drawn 300px from the left edge, so 660px of track is
+ * visible ahead — 1.8s at this speed, down from 2.0s at 330. That is the number to watch
+ * if this ever goes higher; past ~400 the camera lead needs to grow with it.
  */
-export const RUN_SPEED = 330;
+export const RUN_SPEED = 370;
 
 /**
  * Delta-time cap. Resuming from a backgrounded tab/app can hand us a multi-second

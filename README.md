@@ -17,18 +17,23 @@ npm test           # validate the level, smoke test, and a full autoplay run
 
 ## How it plays
 
-You run right at a constant 330px/s. Tapping jumps; holding the tap jumps higher, up to a
+You run right at a constant 370px/s. Tapping jumps; holding the tap jumps higher, up to a
 270ms cap. A tap is a ~82px hop, a full hold is ~190px — enough to clear the widest pit in
 the level with room to spare, and enough to clip a stalactite if you over-commit.
 
-The level is ~79 seconds of clean running, split into four segments by three checkpoints:
+Height is set by gravity alone, so it does not move with the run speed — but *reach* does.
+At 370px/s a full hold covers 314px of flat ground, which is why the pits are 4-6 tiles
+wide rather than the 3-5 they were at 330: the speed and the gaps have to move together or
+a faster runner just gets an easier level.
+
+The level is ~70 seconds of clean running, split into four segments by three checkpoints:
 
 | Segment | Tiles | Time | Introduces |
 |---|---|---|---|
-| 1 — Entrance | 0–168 | ~16s | The jump. Widening gaps, one stalagmite, no creatures. |
-| 2 — Bats | 168–393 | ~22s | Bats: slow vertical sweeps. Terrain stays simple. |
-| 3 — Spiders + combined | 393–655 | ~25s | Ceiling spiders, then everything at once. Hardest stretch. |
-| 4 — Finale | 655–812 | ~16s | Remix only: a staircase of lit ledges over open pits, then a clear run to the goal. |
+| 1 — Entrance | 0–168 | ~15s | The jump. Widening gaps, a few stalagmites, no creatures. |
+| 2 — Bats | 168–393 | ~20s | Bats: slow vertical sweeps. Terrain stays simple. |
+| 3 — Spiders + combined | 393–655 | ~23s | Ceiling spiders, then everything at once. Hardest stretch. |
+| 4 — Finale | 655–812 | ~15s | Remix only: a staircase of lit ledges over open pits, then a clear run to the goal. |
 
 Checkpoints sit at tiles 166, 376 and 648. The shield mushroom is at tile 386 — right
 after checkpoint 2, banked immediately before the hardest section.
@@ -80,6 +85,10 @@ the tuning constants and refuses to write a map that fails:
 - entities buried in rock, floating over pits, or sitting at the wrong surface height
 - **creature reach**: a bat at the bottom of its sweep, or a spider at full extension, must
   actually intersect a runner standing on the ground below it, or it is a decorative threat
+- **anything hoppable, too close to a pit lip**: stalagmites, spikes, and any creature that
+  reaches the ground lane. Hopping one commits you to a fixed arc, so if the next lip is
+  nearer than the shortest possible hop, the hop itself lands in the pit and there is no
+  fair line through
 - checkpoint/power-up/goal counts, and a pacing report per segment
 
 Change `RUN_SPEED` or any jump constant and the validator re-checks the whole level against
@@ -88,8 +97,8 @@ jump trajectory rather than hand-drawn.
 
 `npm run pacing` (tools/pacing-report.mjs) reports the other half of level quality: how
 often the player actually has something to do. It counts the beats that demand an input and
-measures the dead air between them. Current level: one beat every 1.33s, with 11% of the run
-in lulls longer than 2.5s — down from 1.70s and 36% before the pacing pass.
+measures the dead air between them. Current level: one beat every 1.17s, and no lull over 2.5s
+anywhere in the run — down from 1.70s and 36% of the run before the first pacing pass.
 
 ---
 
@@ -217,11 +226,8 @@ runs three things:
    frame with a scripted bot that reads the tilemap ahead of itself and predicts creature
    positions (`Bat.predictY` / `Spider.predictY`). It plays the entire level in a few
    seconds, exercising streaming, pooling, checkpoints, respawns and the goal. Current
-   result: reaches the win screen with 178 crystals and 36 pooled objects covering all 288
-   entities in the level, dying 3 times at the ledge at tile 454 — the bot hops at the
-   spider at 446, which is the wrong answer to a spider that drops all the way to the
-   floor, and it is still airborne through the take-off window for the pit. That jump has
-   55% margin from a standing start; it is bot policy, not level design.
+   result: reaches the win screen in ~70s of game time with no deaths, 155 crystals, and 36
+   pooled objects covering all 288 entities in the level.
 
 The autoplay bot is a traversal check, not a fun check — it says the level is completable
 and nothing crashes, not that the timing feels good.

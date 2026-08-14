@@ -11,10 +11,10 @@
  *    2-13  playable air
  *    14-17 bedrock floor (14 is the walkable surface)
  *
- * Pacing reference: the runner covers 330px/s = 10.3 tiles/s.
- *   Segment 1  x   0-168   ~16s   Entrance          -> checkpoint 1 @ 166
- *   Segment 2  x 168-393   ~22s   Bats              -> checkpoint 2 @ 376, power-up @ 386
- *   Segment 3  x 394-655   ~25s   Spiders + combo   -> checkpoint 3 @ 648
+ * Pacing reference: the runner covers 370px/s = 11.6 tiles/s.
+ *   Segment 1  x   0-168   ~15s   Entrance          -> checkpoint 1 @ 166
+ *   Segment 2  x 168-393   ~20s   Bats              -> checkpoint 2 @ 376, power-up @ 386
+ *   Segment 3  x 394-655   ~23s   Spiders + combo   -> checkpoint 3 @ 648
  *   Segment 4  x 656-812   ~15s   Finale            -> goal @ 812
  *
  * Obstacle placement is paced against `tools/pacing-report.mjs`: device testing found a
@@ -45,41 +45,41 @@ export const SPAWN = { x: 5, y: FLOOR_TOP };
  */
 export const PLATFORMS = [
   // ---- Segment 1: Entrance ------------------------------------------------
-  // Wide, flat, forgiving. Gaps grow 3 -> 3 -> 4 -> 4. One stalagmite. No creatures.
+  // Wide, flat, forgiving. Gaps grow 4 -> 4 -> 5 -> 5. Stalagmites only. No creatures.
   { x: 0, w: 25, top: 14, kind: 'ground' },
-  { x: 28, w: 21, top: 14, kind: 'ground' }, // gap 25-27 (3)
-  { x: 52, w: 19, top: 14, kind: 'ground' }, // gap 49-51 (3)
-  { x: 75, w: 22, top: 14, kind: 'ground' }, // gap 71-74 (4)
-  { x: 101, w: 18, top: 12, kind: 'ledge' }, // gap 97-100 (4), first step up
-  { x: 123, w: 27, top: 14, kind: 'ground' }, // gap 119-122 (4)
-  { x: 153, w: 63, top: 14, kind: 'ground' }, // gap 150-152 (3) — breaks up the run to checkpoint 1
+  { x: 29, w: 20, top: 14, kind: 'ground' }, // gap 25-28 (4)
+  { x: 53, w: 18, top: 14, kind: 'ground' }, // gap 49-52 (4)
+  { x: 76, w: 21, top: 14, kind: 'ground' }, // gap 71-75 (5)
+  { x: 102, w: 17, top: 12, kind: 'ledge' }, // gap 97-101 (5), first step up
+  { x: 124, w: 26, top: 14, kind: 'ground' }, // gap 119-123 (5)
+  { x: 154, w: 62, top: 14, kind: 'ground' }, // gap 150-153 (4) — breaks up the run to checkpoint 1
 
   // ---- Segment 2: Bats ----------------------------------------------------
   // Terrain stays simple on purpose: the only new thing here is creature timing.
-  { x: 220, w: 43, top: 14, kind: 'ground' }, // gap 216-219 (4)
-  { x: 267, w: 19, top: 12, kind: 'ledge' }, // gap 263-266 (4)
-  { x: 290, w: 31, top: 14, kind: 'ground' }, // gap 286-289 (4)
-  { x: 325, w: 41, top: 14, kind: 'ground' }, // gap 321-324 (4)
-  { x: 370, w: 51, top: 14, kind: 'ground' }, // gap 366-369 (4) — checkpoint 2 + power-up
+  { x: 221, w: 42, top: 14, kind: 'ground' }, // gap 216-220 (5)
+  { x: 268, w: 18, top: 12, kind: 'ledge' }, // gap 263-267 (5)
+  { x: 291, w: 30, top: 14, kind: 'ground' }, // gap 286-290 (5)
+  { x: 326, w: 40, top: 14, kind: 'ground' }, // gap 321-325 (5)
+  { x: 371, w: 50, top: 14, kind: 'ground' }, // gap 366-370 (5) — checkpoint 2 + power-up
 
   // ---- Segment 3: Spiders, then everything together -----------------------
-  { x: 425, w: 26, top: 14, kind: 'ground' }, // gap 421-424 (4)
-  { x: 454, w: 19, top: 12, kind: 'ledge' }, // gap 451-453 (3)
-  { x: 478, w: 29, top: 14, kind: 'ground' }, // gap 473-477 (5)
-  { x: 511, w: 20, top: 11, kind: 'ledge' }, // gap 507-510 (4), highest ledge so far
-  { x: 536, w: 25, top: 14, kind: 'ground' }, // gap 531-535 (5)
+  { x: 426, w: 25, top: 14, kind: 'ground' }, // gap 421-425 (5)
+  { x: 455, w: 18, top: 12, kind: 'ledge' }, // gap 451-454 (4)
+  { x: 479, w: 28, top: 14, kind: 'ground' }, // gap 473-478 (6)
+  { x: 512, w: 19, top: 11, kind: 'ledge' }, // gap 507-511 (5), highest ledge so far
+  { x: 537, w: 24, top: 14, kind: 'ground' }, // gap 531-536 (6)
   { x: 566, w: 25, top: 14, kind: 'ground' }, // gap 561-565 (5), stalactite overhead
-  { x: 596, w: 20, top: 12, kind: 'ledge' }, // gap 591-595 (5)
-  { x: 621, w: 60, top: 14, kind: 'ground' }, // gap 616-620 (5) — breathing room, checkpoint 3
+  { x: 597, w: 19, top: 12, kind: 'ledge' }, // gap 591-596 (6)
+  { x: 622, w: 59, top: 14, kind: 'ground' }, // gap 616-621 (6) — breathing room, checkpoint 3
 
   // ---- Segment 4: Finale --------------------------------------------------
   // A staircase of lit ledges strung over open pits: the most dramatic run in the
   // level, built only from things already taught.
-  { x: 685, w: 16, top: 12, kind: 'ledge' }, // gap 681-684 (4)
-  { x: 705, w: 16, top: 11, kind: 'ledge' }, // gap 701-704 (4)
-  { x: 726, w: 17, top: 12, kind: 'ledge' }, // gap 721-725 (5)
-  { x: 748, w: 28, top: 14, kind: 'ground' }, // gap 743-747 (5)
-  { x: 781, w: 69, top: 14, kind: 'ground' } // gap 776-780 (5) — clear run to the goal
+  { x: 686, w: 15, top: 12, kind: 'ledge' }, // gap 681-685 (5)
+  { x: 706, w: 15, top: 11, kind: 'ledge' }, // gap 701-705 (5)
+  { x: 727, w: 16, top: 12, kind: 'ledge' }, // gap 721-726 (6)
+  { x: 749, w: 27, top: 14, kind: 'ground' }, // gap 743-748 (6)
+  { x: 782, w: 68, top: 14, kind: 'ground' } // gap 776-781 (6) — clear run to the goal
 ];
 
 /**
@@ -132,6 +132,11 @@ const hazards = [
   // nothing to do.
   { type: 'stalagmite', x: 62, y: 14 },
   { type: 'stalagmite', x: 140, y: 14 },
+  // Splits the last long flat run of the segment. At 370px/s the stretch from the pit at
+  // 150 to the stalagmite at 186 was 3.1s of holding still — the longest lull left in the
+  // level, and it landed in the first fifteen seconds where the player is deciding
+  // whether the game is doing anything.
+  { type: 'stalagmite', x: 172, y: 14 },
   { type: 'stalagmite', x: 186, y: 14 },
 
   // Segment 2 — one static obstacle only; bats are the new idea here.
@@ -176,15 +181,15 @@ const creatures = [
 
   { type: 'spider', x: 408, drop: 13, period: 2800, phase: 0 }, // solo, flat ground: teaches the beat
   { type: 'spider', x: 436, drop: 13, period: 2600, phase: 0 },
-  { type: 'spider', x: 446, drop: 13, period: 2600, phase: 0.5 },
+  { type: 'spider', x: 443, drop: 13, period: 2600, phase: 0.5 }, // 8 tiles clear of the lip at 451
   { type: 'spider', x: 462, drop: 11, period: 2400, phase: 0.2 }, // onto the ledge
 
   // --- Combined challenge ---------------------------------------------------
   { type: 'bat', x: 486, yTop: 9.5, yBottom: 13, period: 2400, phase: 0.3 },
   { type: 'spider', x: 519, drop: 10, period: 2400, phase: 0 },
-  { type: 'bat', x: 526, yTop: 6.5, yBottom: 10, period: 2200, phase: 0.5 },
+  { type: 'bat', x: 523, yTop: 6.5, yBottom: 10, period: 2200, phase: 0.5 }, // 8 tiles clear of the lip at 531
   { type: 'bat', x: 575, yTop: 10, yBottom: 13, period: 2200, phase: 0.1 },
-  { type: 'spider', x: 585, drop: 13, period: 2200, phase: 0.45 },
+  { type: 'spider', x: 583, drop: 13, period: 2200, phase: 0.45 }, // 8 tiles clear of the lip at 591
   { type: 'spider', x: 604, drop: 11, period: 2400, phase: 0.2 },
 
   // --- Finale ---------------------------------------------------------------
@@ -310,20 +315,21 @@ trail(396, 418, 13, 5); // starts clear of the bat at 392
 
 // Segment 3 — sparser: attention belongs on the creatures here.
 pitArc(421);
-trail(428, 444, 13, 5);
+trail(428, 440, 13, 6); // threaded between the spiders at 436 and 443
 pitArc(451, 3);
 trail(456, 470, 11, 4);
 pitArc(473);
 trail(482, 504, 13, 6);
 pitArc(507);
 trail(513, 521, 10, 4);
-trail(529, 529, 10, 4); // clear of the bat at 526
+trail(529, 529, 10, 4); // clear of the bat at 523
 pitArc(531);
 trail(538, 543, 13, 3);
 gem(551, 13);
 gem(556, 13);
 pitArc(561, 3, { holdMs: 90 }); // forced low: the stalactite tip hangs over this pit
-trail(568, 588, 13, 5);
+trail(568, 578, 13, 5); // threaded past the bat at 575
+trail(586, 588, 13, 2); // split around the spider at 583
 pitArc(591);
 trail(598, 601, 11, 3);
 trail(610, 614, 11, 4); // split around the stalagmite at 606 and the spider at 604

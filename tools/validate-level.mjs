@@ -216,6 +216,12 @@ const surfaceUnder = (x) => {
   return top === undefined ? null : top * TILE;
 };
 
+/**
+ * Creatures that actually occupy the ground lane. These force a hop exactly the way a
+ * stalagmite does, so the pit-lip spacing rule below has to consider them too.
+ */
+const groundBlockers = [];
+
 for (const e of ENTITIES) {
   const lowRow = e.type === 'bat' ? e.yBottom : e.type === 'spider' ? e.drop : null;
   if (lowRow === null) continue;
@@ -234,6 +240,8 @@ for (const e of ENTITIES) {
       `${e.type} at x=${e.x} bottoms out at y=${low}px, which misses a runner standing at ` +
         `y=${playerTop}..${surface} (overlap ${overlap.toFixed(0)}px) — it would never be a threat`
     );
+  } else {
+    groundBlockers.push(e);
   }
 }
 
@@ -247,8 +255,12 @@ const SAFE_HAZARD_TO_LIP = MIN_HOP_PX + 48;
 notes.push(`shortest possible hop: ${MIN_HOP_PX.toFixed(0)}px (${(MIN_HOP_PX / TILE).toFixed(1)} tiles)`);
 
 const pitStarts = pits.map((p) => p.start);
-for (const e of ENTITIES) {
-  if (e.type !== 'stalagmite' && e.type !== 'spikes') continue;
+const hoppables = [
+  ...ENTITIES.filter((e) => e.type === 'stalagmite' || e.type === 'spikes'),
+  ...groundBlockers
+].sort((a, b) => a.x - b.x);
+
+for (const e of hoppables) {
   const lip = pitStarts.find((x) => x > e.x);
   if (lip === undefined) continue;
   const gapPx = (lip - e.x) * TILE;
