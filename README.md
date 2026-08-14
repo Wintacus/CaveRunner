@@ -217,8 +217,11 @@ runs three things:
    frame with a scripted bot that reads the tilemap ahead of itself and predicts creature
    positions (`Bat.predictY` / `Spider.predictY`). It plays the entire level in a few
    seconds, exercising streaming, pooling, checkpoints, respawns and the goal. Current
-   result: reaches the win screen in ~78s of game time, no deaths, 182 crystals, with 36
-   pooled objects covering all 288 entities in the level.
+   result: reaches the win screen with 178 crystals and 36 pooled objects covering all 288
+   entities in the level, dying 3 times at the ledge at tile 454 — the bot hops at the
+   spider at 446, which is the wrong answer to a spider that drops all the way to the
+   floor, and it is still airborne through the take-off window for the pit. That jump has
+   55% margin from a standing start; it is bot policy, not level design.
 
 The autoplay bot is a traversal check, not a fun check — it says the level is completable
 and nothing crashes, not that the timing feels good.
@@ -226,13 +229,24 @@ and nothing crashes, not that the timing feels good.
 **Not yet done: playtesting on a real phone.** That's the next step per the build order, and
 the thing that decides whether the jump constants are right.
 
-### Notable bug this caught
+### Two Arcade gotchas worth knowing
 
-Falling at terminal velocity moves the body ~19px per physics step, which exceeds Arcade's
-default `tileBias` of 16 — so a fast fall onto a ledge silently cancels tile separation and
-the player drops through solid ground. It only reproduces on the longest drops, which is
-exactly the kind of thing a short manual test misses. Fixed by raising `tileBias` to 40 in
-the physics config.
+**Tile bias.** Falling at terminal velocity moves the body ~19px per physics step, which
+exceeds Arcade's default `tileBias` of 16 — so a fast fall onto a ledge silently cancels
+tile separation and the player drops through solid ground. It only reproduces on the
+longest drops, which is exactly the kind of thing a short manual test misses. Fixed by
+raising `tileBias` to 40 in the physics config.
+
+**`touching.down` is not "on the ground".** Arcade runs the same separation maths for
+`overlap` as it does for `collider`, so `GetOverlapY` sets `touching.down` on *any* body
+that happens to be falling when it overlaps another one — crystals and checkpoints
+included. Reading `blocked.down || touching.down` as the ground check therefore made
+brushing a crystal on the way down count as a landing: it cleared the jump state, refilled
+coyote time, and handed the player a real mid-air second jump for the next 140ms. A player
+found it before the harness did; instrumenting an autoplay run then showed 85 airborne
+frames per run flagged as grounded, up to 160px above the floor, and a tap on any of them
+fired a full second jump 209 times out of 209. The ground check now reads `blocked.down`
+only, which is the flag tile separation actually sets.
 
 ---
 

@@ -209,8 +209,20 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     return this.invulnTimer > 0;
   }
 
+  /**
+   * Real ground only.
+   *
+   * Deliberately *not* `|| body.touching.down`. Arcade runs the same separation maths for
+   * overlap-only checks as it does for collisions, so `GetOverlapY` sets `touching.down`
+   * on any body that is falling when it overlaps another one — including the crystals,
+   * checkpoints and creatures the player only ever *overlaps*. That made brushing a
+   * crystal on the way down count as a landing: it cleared `jumping`, refilled coyote
+   * time, and handed the player a genuine mid-air second jump for the next 140ms (plus a
+   * landing thud and dust puff in mid-air). The only thing this game actually collides
+   * with is the ground tilemap, and tile separation sets `blocked.down`.
+   */
   get onGround() {
-    return this.body.blocked.down || this.body.touching.down;
+    return this.body.blocked.down;
   }
 
   update(dt) {
