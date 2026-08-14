@@ -16,7 +16,8 @@
     "serve:test": "vite preview --port 4173",
     "smoke": "node tools/smoke-test.mjs",
     "autoplay": "node tools/autoplay.mjs",
-    "test": "npm run build && node tools/run-tests.mjs"
+    "test": "npm run build && node tools/run-tests.mjs",
+    "pacing": "node tools/pacing-report.mjs"
   },
   "dependencies": {
     "@capacitor/app": "^8.1.1",

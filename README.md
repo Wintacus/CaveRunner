@@ -17,18 +17,18 @@ npm test           # validate the level, smoke test, and a full autoplay run
 
 ## How it plays
 
-You run right at a constant 300px/s. Tapping jumps; holding the tap jumps higher, up to a
+You run right at a constant 330px/s. Tapping jumps; holding the tap jumps higher, up to a
 270ms cap. A tap is a ~82px hop, a full hold is ~190px — enough to clear the widest pit in
 the level with room to spare, and enough to clip a stalactite if you over-commit.
 
-The level is ~88 seconds of clean running, split into four segments by three checkpoints:
+The level is ~79 seconds of clean running, split into four segments by three checkpoints:
 
 | Segment | Tiles | Time | Introduces |
 |---|---|---|---|
-| 1 — Entrance | 0–168 | ~18s | The jump. Widening gaps, one stalagmite, no creatures. |
-| 2 — Bats | 168–393 | ~24s | Bats: slow vertical sweeps. Terrain stays simple. |
-| 3 — Spiders + combined | 393–655 | ~28s | Ceiling spiders, then everything at once. Hardest stretch. |
-| 4 — Finale | 655–828 | ~18s | Remix only: a staircase of lit ledges over open pits, then a clear run to the goal. |
+| 1 — Entrance | 0–168 | ~16s | The jump. Widening gaps, one stalagmite, no creatures. |
+| 2 — Bats | 168–393 | ~22s | Bats: slow vertical sweeps. Terrain stays simple. |
+| 3 — Spiders + combined | 393–655 | ~25s | Ceiling spiders, then everything at once. Hardest stretch. |
+| 4 — Finale | 655–812 | ~16s | Remix only: a staircase of lit ledges over open pits, then a clear run to the goal. |
 
 Checkpoints sit at tiles 166, 376 and 648. The shield mushroom is at tile 386 — right
 after checkpoint 2, banked immediately before the hardest section.
@@ -83,7 +83,13 @@ the tuning constants and refuses to write a map that fails:
 - checkpoint/power-up/goal counts, and a pacing report per segment
 
 Change `RUN_SPEED` or any jump constant and the validator re-checks the whole level against
-the new physics.
+the new physics — including regenerating the crystal arcs, which are sampled from the real
+jump trajectory rather than hand-drawn.
+
+`npm run pacing` (tools/pacing-report.mjs) reports the other half of level quality: how
+often the player actually has something to do. It counts the beats that demand an input and
+measures the dead air between them. Current level: one beat every 1.33s, with 11% of the run
+in lulls longer than 2.5s — down from 1.70s and 36% before the pacing pass.
 
 ---
 
@@ -109,6 +115,9 @@ respawn. The beat you learn on attempt 3 is the beat you get on attempt 30.
 
 - A hit without the shield sends you back to the last checkpoint, with 1.6s of invincibility
   (the sprite flickers) so a hazard near the checkpoint can't instantly re-kill you.
+- The shield is worn visibly: a spinning ring around the runner plus an amber rim light,
+  and it shatters into shards when spent. The state lives on the character rather than in
+  a HUD corner because that is where the player's eyes are during a run.
 - With the shield, a hit is absorbed with **no knockback and no interruption** — you keep
   running — the mushroom is consumed, and you get 1.4s of invincibility so a second nearby
   hazard can't double-dip.
@@ -208,8 +217,8 @@ runs three things:
    frame with a scripted bot that reads the tilemap ahead of itself and predicts creature
    positions (`Bat.predictY` / `Spider.predictY`). It plays the entire level in a few
    seconds, exercising streaming, pooling, checkpoints, respawns and the goal. Current
-   result: reaches the win screen in ~88s of game time, 2 deaths, 172/251 crystals, with 33
-   pooled objects covering all 287 entities in the level.
+   result: reaches the win screen in ~78s of game time, no deaths, 182 crystals, with 36
+   pooled objects covering all 288 entities in the level.
 
 The autoplay bot is a traversal check, not a fun check — it says the level is completable
 and nothing crashes, not that the timing feels good.
