@@ -3,6 +3,7 @@ import { GAME_WIDTH, GAME_HEIGHT, COLORS } from '../config/tuning.js';
 import { KEYS } from '../gfx/textures.js';
 import { getSafeArea } from '../systems/lifecycle.js';
 import { audio } from '../systems/audio.js';
+import { support as hapticSupport, lastEvent as lastHaptic } from '../systems/haptics.js';
 
 const BTN = 56;
 
@@ -29,6 +30,7 @@ export class HudScene extends Phaser.Scene {
     this.#buildPauseButton();
     this.#buildToast();
     this.#buildPauseMenu();
+    this.#buildDebugReadout();
 
     this.registry.events.on('changedata-score', (_p, value) => this.scoreText.setText(String(value)));
     this.registry.events.on('changedata-shield', (_p, value) => this.#setShield(value));
@@ -64,6 +66,19 @@ export class HudScene extends Phaser.Scene {
 
     this.shieldIcon = this.add.image(0, 0, KEYS.mushroom).setScale(0.7).setOrigin(0, 0.5).setAlpha(0.18);
     this.shieldPulse = null;
+  }
+
+  /**
+   * ?debug=1 only: a device readout. Phone-only testing has no devtools, so "I feel no
+   * haptics" is otherwise impossible to tell apart from "this device has no vibration
+   * API" (which is every iPhone on the web).
+   */
+  #buildDebugReadout() {
+    if (!new URLSearchParams(location.search).has('debug')) return;
+    this.debugText = this.add
+      .text(0, 0, '', { fontFamily: 'monospace', fontSize: '13px', color: '#8fb6cf' })
+      .setOrigin(0, 1)
+      .setDepth(60);
   }
 
   #buildPauseButton() {
@@ -141,6 +156,7 @@ export class HudScene extends Phaser.Scene {
     this.shieldIcon.setPosition(left + 2, top + 54);
 
     this.pauseBtn.setPosition(GAME_WIDTH - right - BTN / 2, top + BTN / 2);
+    if (this.debugText) this.debugText.setPosition(left, GAME_HEIGHT - this.safe.bottom);
     this.#publishUiRects();
   }
 
@@ -172,6 +188,15 @@ export class HudScene extends Phaser.Scene {
         ease: 'Sine.easeInOut'
       });
     }
+  }
+
+  update() {
+    if (!this.debugText) return;
+    this.debugText.setText(
+      `haptics: ${hapticSupport.describe()}  |  last: ${lastHaptic.name} ` +
+        `${lastHaptic.delivered ? 'sent' : 'not sent'}\n` +
+        `native=${hapticSupport.native}  vibrate()=${hapticSupport.vibrationApi}`
+    );
   }
 
   showToast(message, colour = COLORS.teal) {

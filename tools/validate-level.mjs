@@ -2,7 +2,7 @@
 // compiled to a Tiled map. Catches "this gap is impossible" / "this stalagmite is
 // floating in the air" mistakes that are otherwise only findable by playing.
 import { PLATFORMS, ENTITIES, SEGMENTS, MAP_W, MAP_H, TILE, FLOOR_TOP, CEIL_BOTTOM } from '../src/level/level1.js';
-import { reachForRise, apexHeight } from './jump-model.mjs';
+import { reachForRise, apexHeight, arcPoints, holdForGap } from '../src/physics/jump-model.js';
 import { RUN_SPEED, PLAYER_BODY_W, PLAYER_BODY_H } from '../src/config/tuning.js';
 
 const errors = [];
@@ -57,6 +57,15 @@ for (let i = 1; i < sorted.length; i++) {
   }
 }
 
+// Pit spans, reused by the crystal checks below.
+const pits = [];
+for (let i = 1; i < sorted.length; i++) {
+  const prev = sorted[i - 1];
+  const cur = sorted[i];
+  const start = prev.x + prev.w;
+  if (cur.x > start) pits.push({ start, end: cur.x - 1, takeoffRow: prev.top, landingRow: cur.top });
+}
+
 // --- solidity lookup ---------------------------------------------------------
 const solidTop = new Map(); // tile x -> surface row
 for (const p of sorted) for (let x = p.x; x < p.x + p.w; x++) solidTop.set(x, p.top);
@@ -108,13 +117,70 @@ for (const e of ENTITIES) {
   if (e.type === 'stalagmite' || e.type === 'spikes') hazardXs.push(e.x);
 }
 
-// Crystals sitting on top of a hazard would bait the player into a hit.
+// Crystals sitting on a hazard would bait the player into a hit. Compare vertical
+// extents too: a gem *below* a stalactite is the intended threading-the-needle reward,
+// not an overlap.
 for (const e of ENTITIES) {
   if (e.type !== 'crystal') continue;
-  for (const hx of hazardXs) {
-    if (Math.abs(e.x - hx) < 0.9 && e.y > 11.5) {
-      warnings.push(`crystal at (${e.x},${e.y}) overlaps a hazard at x=${hx}`);
+  for (const h of ENTITIES) {
+    if (!['stalagmite', 'spikes', 'stalactite'].includes(h.type)) continue;
+    if (Math.abs(e.x - h.x) >= 1) continue;
+    const span =
+      h.type === 'stalactite'
+        ? [CEIL_BOTTOM, CEIL_BOTTOM + h.len] // hangs down from the ceiling
+        : [h.y - 2, h.y]; // sits on the surface, roughly two tiles tall
+    if (e.y > span[0] - 0.5 && e.y < span[1] + 0.5) {
+      warnings.push(`crystal at (${e.x},${e.y}) overlaps a ${h.type} at x=${h.x}`);
       break;
+    }
+  }
+}
+
+// --- crystals over pits ------------------------------------------------------
+// A pickup hanging over a pit has to sit on a path the player can actually fly. The
+// failure this guards against: a gem at take-off height just past the lip. It reads as a
+// reward, but the only way to be at that height there is to not have jumped — so it pays
+// out as a fall. Every over-pit gem must clear the take-off surface and lie near the
+// trajectory of some hold that clears the gap.
+const MIN_LIFT_PX = 24;
+const ARC_TOLERANCE_PX = 48;
+
+for (const pit of pits) {
+  const gapPx = (pit.end - pit.start + 1) * TILE + PLAYER_BODY_W;
+  const rise = (pit.takeoffRow - pit.landingRow) * TILE;
+  const minHold = holdForGap(gapPx, rise);
+  if (minHold === null) continue; // already reported as an impossible gap
+
+  const lipX = pit.start * TILE;
+  const takeoffY = pit.takeoffRow * TILE;
+
+  for (const e of ENTITIES) {
+    if (e.type !== 'crystal' && e.type !== 'powerup') continue;
+    const px = e.x * TILE;
+    if (px < lipX - TILE / 2 || px > (pit.end + 1) * TILE + TILE / 2) continue;
+
+    const lift = takeoffY - e.y * TILE;
+    if (lift < MIN_LIFT_PX) {
+      errors.push(
+        `${e.type} at (${e.x},${e.y}) hangs over the pit at ${pit.start}-${pit.end} only ` +
+          `${lift.toFixed(0)}px above take-off height — reachable only by falling in`
+      );
+      continue;
+    }
+
+    // Is it near the arc of *some* hold that clears this pit?
+    let best = Infinity;
+    for (let hold = minHold; hold <= 270; hold += 10) {
+      for (const p of arcPoints(hold, 40, { rise, fromFrac: 0, toFrac: 1 })) {
+        if (Math.abs(lipX + p.x - px) > TILE / 2) continue;
+        best = Math.min(best, Math.abs(takeoffY + p.y - e.y * TILE));
+      }
+    }
+    if (best > ARC_TOLERANCE_PX) {
+      warnings.push(
+        `${e.type} at (${e.x},${e.y}) over the pit at ${pit.start}-${pit.end} is ` +
+          `${best.toFixed(0)}px off any clearing jump arc`
+      );
     }
   }
 }
@@ -147,6 +213,34 @@ for (const e of ENTITIES) {
     errors.push(
       `${e.type} at x=${e.x} bottoms out at y=${low}px, which misses a runner standing at ` +
         `y=${playerTop}..${surface} (overlap ${overlap.toFixed(0)}px) — it would never be a threat`
+    );
+  }
+}
+
+// --- hazards before pit lips -------------------------------------------------
+// Hopping a ground hazard commits the player to a fixed arc. The shortest jump the
+// controls can produce still carries ~150px of airtime, so a hazard sitting closer than
+// that to the next pit lip means the hop itself lands in the pit, leaving only a
+// frame-tight early hop plus a buffered re-jump. That is not a readable challenge.
+const MIN_HOP_PX = arcPoints(0, 2, { fromFrac: 0, toFrac: 1 })[1].x;
+const SAFE_HAZARD_TO_LIP = MIN_HOP_PX + 48;
+notes.push(`shortest possible hop: ${MIN_HOP_PX.toFixed(0)}px (${(MIN_HOP_PX / TILE).toFixed(1)} tiles)`);
+
+const pitStarts = pits.map((p) => p.start);
+for (const e of ENTITIES) {
+  if (e.type !== 'stalagmite' && e.type !== 'spikes') continue;
+  const lip = pitStarts.find((x) => x > e.x);
+  if (lip === undefined) continue;
+  const gapPx = (lip - e.x) * TILE;
+  if (gapPx < MIN_HOP_PX) {
+    errors.push(
+      `${e.type} at x=${e.x} is ${gapPx.toFixed(0)}px before the pit lip at ${lip}, closer than the ` +
+        `shortest hop (${MIN_HOP_PX.toFixed(0)}px) — hopping it lands the player in the pit`
+    );
+  } else if (gapPx < SAFE_HAZARD_TO_LIP) {
+    warnings.push(
+      `${e.type} at x=${e.x} is only ${gapPx.toFixed(0)}px before the pit lip at ${lip} ` +
+        `(want ${SAFE_HAZARD_TO_LIP.toFixed(0)}px for a hop plus a re-jump)`
     );
   }
 }

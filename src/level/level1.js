@@ -18,6 +18,9 @@
  *   Segment 4  x 656-828   ~18s   Finale            -> goal @ 828
  */
 
+import { arcPoints, holdForGap } from '../physics/jump-model.js';
+import { PLAYER_BODY_W } from '../config/tuning.js';
+
 export const TILE = 32;
 export const MAP_W = 850;
 export const MAP_H = 18;
@@ -129,10 +132,15 @@ const hazards = [
   { type: 'stalagmite', x: 496, y: 14 },
   { type: 'spikes', x: 545, y: 14, w: 3 },
   { type: 'stalactite', x: 563, len: 5 }, // over the pit at 561-565: punishes over-jumping
-  { type: 'stalagmite', x: 612, y: 12 },
+  { type: 'stalagmite', x: 606, y: 12 }, // kept clear of the pit lip at 616 (see below)
 
   // Segment 4 — remix only.
-  { type: 'stalagmite', x: 740, y: 12 },
+  // A stalagmite used to sit at 740, three tiles before the pit lip at 743. There is no
+  // fair line through that: the shortest possible hop carries ~156px of airtime, so
+  // hopping the spike lands you in the pit, and the only alternative is a frame-tight
+  // early hop plus a buffered re-jump. The ledge has nowhere else to put it either — the
+  // landing zone from the previous pit covers its left half, and the bat at 734 covers
+  // the rest — so it is gone. The finale still remixes bats, a spider and spikes.
   { type: 'spikes', x: 756, y: 14, w: 3 }
 ];
 
@@ -180,80 +188,118 @@ const progression = [
 ];
 
 // --- Crystals ---------------------------------------------------------------
-// Authoring helpers: `trail` lays a run of pickups along a surface, `arc` traces the
-// shape of a jump over a pit. Every position below is placed by hand.
+// Authoring helpers. `trail` lays a run of pickups along a surface; `pitArc` strings them
+// along the jump the player will actually fly over a named pit.
+//
+// pitArc replaced a hand-drawn parabola. The old one anchored its ends at the take-off
+// row, which put a gem at surface height a third of a tile past the lip — a spot the
+// player can only occupy by *not* jumping. That reads as a reward and pays out as a fall.
+// Sampling the real trajectory instead keeps every gem over a pit on a path the player
+// can actually be on.
 const crystals = [];
-const gem = (x, y) => crystals.push({ type: 'crystal', x, y });
+const gem = (x, y) => crystals.push({ type: 'crystal', x: +x.toFixed(2), y: +y.toFixed(2) });
 const trail = (x0, x1, y, step = 3) => {
   for (let x = x0; x <= x1; x += step) gem(x, y);
 };
-const arc = (cx, y, count = 5, spread = 1.5, height = 2.4) => {
-  const half = (count - 1) / 2;
-  for (let i = -half; i <= half; i++) {
-    const t = half === 0 ? 0 : i / half;
-    gem(cx + i * spread, y - height * (1 - t * t));
+
+/** Pits, derived from the platform runs: {start, end, takeoffRow, landingRow}. */
+const PITS = (() => {
+  const sorted = [...PLATFORMS].sort((a, b) => a.x - b.x);
+  const pits = [];
+  for (let i = 1; i < sorted.length; i++) {
+    const prev = sorted[i - 1];
+    const cur = sorted[i];
+    const start = prev.x + prev.w;
+    if (cur.x > start) pits.push({ start, end: cur.x - 1, takeoffRow: prev.top, landingRow: cur.top });
+  }
+  return pits;
+})();
+
+/**
+ * Lay `count` crystals along the arc of the jump over the pit beginning at tile
+ * `pitStart`. The hold defaults to the shortest one that clears the gap plus a little
+ * slack, so the reward line teaches the jump the pit actually needs.
+ *
+ * `holdMs` can be forced where something overhead limits how high the player may go.
+ */
+const pitArc = (pitStart, count = 5, { holdMs, fromFrac, toFrac } = {}) => {
+  const pit = PITS.find((p) => p.start === pitStart);
+  if (!pit) throw new Error(`pitArc: no pit starts at tile ${pitStart}`);
+
+  const gapPx = (pit.end - pit.start + 1) * TILE + PLAYER_BODY_W;
+  const rise = (pit.takeoffRow - pit.landingRow) * TILE;
+  const minHold = holdForGap(gapPx, rise);
+  if (minHold === null) throw new Error(`pitArc: the pit at ${pitStart} is not clearable`);
+
+  const hold = holdMs ?? Math.min(minHold + 40, 270);
+  const lipX = pit.start * TILE;
+  const takeoffY = pit.takeoffRow * TILE;
+
+  for (const p of arcPoints(hold, count, { rise, fromFrac, toFrac })) {
+    gem((lipX + p.x) / TILE, (takeoffY + p.y) / TILE);
   }
 };
 
 // Segment 1 — a trail at chest height to teach "jump = reward", then arcs over each pit.
 trail(10, 20, 13);
-arc(26, 13);
-arc(50, 13);
+pitArc(25);
+pitArc(49);
 trail(54, 60, 13, 3);
-arc(72.5, 13, 5, 1.5, 3);
+pitArc(71);
 trail(78, 92, 13, 4);
-arc(98.5, 12, 5, 0.9, 2.4);
+pitArc(97);
 trail(103, 116, 11, 3);
-arc(120.5, 12, 5, 0.9, 2.4);
+pitArc(119);
 trail(126, 138, 13, 4);
 trail(146, 162, 13, 4);
 
 // Segment 2 — arcs over the gaps, plus a high trail under the bats' top position.
-arc(217.5, 13, 5, 1.5, 3);
+pitArc(216);
 trail(222, 230, 13, 4);
 trail(242, 262, 13, 5);
-arc(264, 13, 5, 1.2, 3);
+pitArc(263);
 trail(269, 283, 11, 3);
-arc(287.5, 12, 5, 0.9, 2.4);
+pitArc(286);
 trail(294, 318, 13, 4);
-arc(322.5, 13, 5, 1.5, 3);
+pitArc(321);
 trail(327, 338, 13, 4);
 trail(344, 364, 13, 5);
-arc(367.5, 13, 5, 1.5, 3);
+pitArc(366);
 trail(392, 418, 13, 5);
 
 // Segment 3 — sparser: attention belongs on the creatures here.
-arc(422.5, 13, 5, 1.5, 3);
+pitArc(421);
 trail(428, 444, 13, 5);
-arc(452, 13, 3, 1.2, 2);
+pitArc(451, 3);
 trail(456, 470, 11, 4);
-arc(475.5, 13, 5, 1.5, 3);
+pitArc(473);
 trail(482, 504, 13, 6);
-arc(508.5, 12, 5, 0.9, 3);
+pitArc(507);
 trail(513, 529, 10, 4);
-arc(533.5, 13, 5, 1.5, 3);
+pitArc(531);
 trail(538, 543, 13, 3);
 gem(551, 13);
 gem(556, 13);
-arc(563, 11.5, 3, 1.5, 1.2); // threads the needle under the stalactite
+pitArc(561, 3, { holdMs: 90 }); // forced low: the stalactite tip hangs over this pit
 trail(568, 588, 13, 5);
-arc(593, 13, 5, 1.2, 3);
-trail(598, 614, 11, 4);
-arc(618.5, 12, 5, 1.5, 3);
+pitArc(591);
+trail(598, 604, 11, 3);
+trail(610, 614, 11, 4); // split around the stalagmite at 606
+pitArc(616);
 trail(624, 646, 13, 5);
 trail(654, 678, 13, 4);
 
 // Segment 4 — dense reward line through the staircase, then a victory run.
-arc(682, 13, 5, 1.2, 3);
+pitArc(681);
 trail(687, 699, 11, 3);
-arc(702.5, 12, 5, 0.9, 2.4);
+pitArc(701);
 trail(707, 719, 10, 3);
-arc(723, 11, 5, 0.9, 2.4);
-trail(728, 741, 11, 3);
-arc(745, 12.5, 5, 1.2, 3);
+pitArc(721);
+trail(728, 737, 11, 3); // stops short of the stalagmite at 740
+pitArc(743);
 trail(750, 754, 13, 2);
 trail(761, 774, 13, 3);
-arc(778.5, 13, 5, 1.5, 3);
+pitArc(776);
 trail(783, 825, 13, 3);
 
 export const ENTITIES = [...progression, ...hazards, ...creatures, ...crystals];
