@@ -89,6 +89,14 @@ the tuning constants and refuses to write a map that fails:
   reaches the ground lane. Hopping one commits you to a fixed arc, so if the next lip is
   nearer than the shortest possible hop, the hop itself lands in the pit and there is no
   fair line through
+- **spiders that move while you cross them**: the runner's x at any instant is fixed by the
+  constant scroll speed, so the only answers to a spider are vertical — under it, or over
+  it. One that enters or leaves the lane mid-crossing answers both, and no telegraph helps.
+  Checked at every wake distance the spider can be approached from, including respawns,
+  which wake it later in its cycle than the run-up does
+- **dangling spiders**: enough headroom to run under, low enough to matter, never in the
+  flight path of a jump the player has no choice about (a pit) or within one hop of a
+  ground hazard
 - checkpoint/power-up/goal counts, and a pacing report per segment
 
 Change `RUN_SPEED` or any jump constant and the validator re-checks the whole level against
@@ -111,6 +119,11 @@ a readable, rhythmic pattern, never randomly.
   their wings wide, swell, and lean in the direction they're about to travel.
 - **Spiders** hang from the ceiling and drop on a beat: a third of the cycle is wind-up
   (legs spread, body shaking, silk thread taut), then a fast drop, a hang, and a slow retract.
+- **Dangling spiders** (`hang` on the def) rest partway down instead of at the ceiling. The
+  silk still runs to the ceiling; only the resting height moves. This is the one obstacle in
+  the game that punishes *jumping* rather than not jumping: it occupies a band of air, so
+  running underneath is always safe and leaving the ground near it may not be. Three of them
+  are placed, at tiles 436, 583 and 660.
 
 Every cue is shape + motion, not colour, so it reads for colourblind players.
 

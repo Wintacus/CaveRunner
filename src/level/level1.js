@@ -180,7 +180,14 @@ const creatures = [
   { type: 'bat', x: 392, yTop: 9.5, yBottom: 13, period: 2600, phase: 0.3 },
 
   { type: 'spider', x: 408, drop: 13, period: 2800, phase: 0 }, // solo, flat ground: teaches the beat
-  { type: 'spider', x: 436, drop: 13, period: 2600, phase: 0 },
+  // First dangling spider. Rests at row 9 instead of the ceiling, and phase 0.15 has it
+  // still up when the player crosses it, so what gets taught here is the new idea: a
+  // spider overhead occupies a band of air. Running under it is always safe; jumping into
+  // that band is not. Row 9 is the forgiving version — measured against the real game, a
+  // tap or a short hold clears it from any take-off point, and only the longer holds can
+  // put the player into it. Wide flat ground with nothing forcing a jump, so learning it
+  // costs nothing.
+  { type: 'spider', x: 436, drop: 13, period: 2600, phase: 0.15, hang: 9 },
   { type: 'spider', x: 443, drop: 13, period: 2600, phase: 0.5 }, // 8 tiles clear of the lip at 451
   { type: 'spider', x: 462, drop: 11, period: 2400, phase: 0.2 }, // onto the ledge
 
@@ -189,12 +196,26 @@ const creatures = [
   { type: 'spider', x: 519, drop: 10, period: 2400, phase: 0 },
   { type: 'bat', x: 523, yTop: 6.5, yBottom: 10, period: 2200, phase: 0.5 }, // 8 tiles clear of the lip at 531
   { type: 'bat', x: 575, yTop: 10, yBottom: 13, period: 2200, phase: 0.1 },
-  { type: 'spider', x: 583, drop: 13, period: 2200, phase: 0.45 }, // 8 tiles clear of the lip at 591
+  // Same creature, opposite answer: phase 0.45 has it down on the floor when the player
+  // arrives, so this one has to be jumped. That contrast is the whole point of the
+  // dangle. 8 tiles clear of the lip at 591.
+  { type: 'spider', x: 583, drop: 13, period: 2200, phase: 0.45, hang: 9 },
   { type: 'spider', x: 604, drop: 11, period: 2400, phase: 0.2 },
 
   // --- Finale ---------------------------------------------------------------
   // After checkpoint 3, keeping the run into the finale honest.
-  { type: 'spider', x: 660, drop: 13, period: 2400, phase: 0.4 },
+  // phase 0.5: fully down and still when the player arrives, so it is a jump-over rather
+  // than a coin flip. At 0.4 it was mid-drop exactly as the player crossed it — the one
+  // spider in the level with no answer. It also lands *retracting* on the respawn approach
+  // from checkpoint 3, which keeps the recovery beat after a death clear.
+  // Lowest of the three, at row 11, so the band it occupies starts barely above head
+  // height: unlike the one at 436, even a bare tap runs into it from some take-off
+  // points. Staying on the ground is still always safe, which is the only reason a gate
+  // this tight is fair — and the platform runs 622-680 with nothing on it forcing a jump.
+  //
+  // Phase 0.20 also keeps it honest on both approaches: dangling on the run-up, and down
+  // on the floor (a 44px hop) when respawning from checkpoint 3, which wakes it late.
+  { type: 'spider', x: 660, drop: 13, period: 2400, phase: 0.2, hang: 11 },
   { type: 'bat', x: 672, yTop: 9.5, yBottom: 13, period: 2200, phase: 0.6 },
 
   { type: 'bat', x: 692, yTop: 8, yBottom: 11, period: 2200, phase: 0.2 },

@@ -93,6 +93,7 @@ const objects = ENTITIES.map((e) => {
       break;
     case 'spider':
       props.push(prop('drop', e.drop * TILE), prop('period', e.period), prop('phase', e.phase));
+      if (e.hang !== undefined) props.push(prop('hang', e.hang * TILE));
       break;
     default:
       break;

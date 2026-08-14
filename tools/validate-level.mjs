@@ -1,9 +1,15 @@
 // Checks the hand-authored level against the real jump physics before it is
 // compiled to a Tiled map. Catches "this gap is impossible" / "this stalagmite is
 // floating in the air" mistakes that are otherwise only findable by playing.
-import { PLATFORMS, ENTITIES, SEGMENTS, MAP_W, MAP_H, TILE, FLOOR_TOP, CEIL_BOTTOM } from '../src/level/level1.js';
+import { PLATFORMS, ENTITIES, SEGMENTS, SPAWN, MAP_W, MAP_H, TILE, FLOOR_TOP, CEIL_BOTTOM } from '../src/level/level1.js';
 import { reachForRise, apexHeight, arcPoints, holdForGap } from '../src/physics/jump-model.js';
-import { RUN_SPEED, PLAYER_BODY_W, PLAYER_BODY_H } from '../src/config/tuning.js';
+import {
+  RUN_SPEED,
+  PLAYER_BODY_W,
+  PLAYER_BODY_H,
+  GAME_WIDTH,
+  ACTIVATION_MARGIN
+} from '../src/config/tuning.js';
 
 const errors = [];
 const warnings = [];
@@ -245,14 +251,171 @@ for (const e of ENTITIES) {
   }
 }
 
+// --- spiders that drop onto the player ---------------------------------------
+// The runner's x position at any instant is fixed by the constant scroll speed, so the
+// only way to answer a spider is vertically: run under it while it is up, or jump over it
+// while it is down. A spider that is *mid-drop* during the moment the player crosses it
+// answers both — running into it is a hit, and jumping rises into it — and no amount of
+// telegraphing helps, because there is no input that changes where you are.
+//
+// The encounter is deterministic: a creature's clock starts when it wakes a fixed distance
+// ahead of the camera, so the phase it is in when the player reaches it can be computed
+// exactly. It has to be computed once per *approach*, though: respawning at a checkpoint
+// closer than the wake distance wakes the spider late, which lands the player at a
+// different point in its cycle than the fresh run-up does.
+const SPIDER_WINDUP = 0.32;
+const SPIDER_DROP = 0.1;
+const SPIDER_HANG = 0.22;
+const WAKE_LEAD_PX = GAME_WIDTH - 300 + ACTIVATION_MARGIN; // runner sits 300px from the left edge
+const WAKE_LEAD_MS = (WAKE_LEAD_PX / RUN_SPEED) * 1000;
+const SPIDER_BODY_W = 22;
+const CROSS_MS = ((PLAYER_BODY_W + SPIDER_BODY_W) / RUN_SPEED) * 1000;
+
+const restartPoints = [
+  SPAWN.x,
+  ...ENTITIES.filter((e) => e.type === 'checkpoint').map((e) => e.x)
+].map((t) => (t + 0.5) * TILE);
+
+/** Every wake lead this spider can be approached with: the fresh run-up, and each respawn. */
+const wakeLeads = (px) => {
+  const leads = new Set([WAKE_LEAD_MS]);
+  for (const r of restartPoints) {
+    const d = px - r;
+    if (d > 0 && d < WAKE_LEAD_PX) leads.add((d / RUN_SPEED) * 1000);
+  }
+  return [...leads];
+};
+
+/** The spider's centre y at cycle time `t` — the same motion the entity runs at play time. */
+const spiderYAt = (t, e, restY) => {
+  const drop = e.drop * TILE;
+  const p = (((t % e.period) + e.period) / e.period) % 1;
+  if (p < SPIDER_WINDUP) return restY;
+  if (p < SPIDER_WINDUP + SPIDER_DROP) {
+    const k = (p - SPIDER_WINDUP) / SPIDER_DROP;
+    return restY + (drop - restY) * k * k;
+  }
+  if (p < SPIDER_WINDUP + SPIDER_DROP + SPIDER_HANG) return drop;
+  const k = (p - SPIDER_WINDUP - SPIDER_DROP - SPIDER_HANG) / (1 - SPIDER_WINDUP - SPIDER_DROP - SPIDER_HANG);
+  const eased = k < 0.5 ? 2 * k * k : -1 + (4 - 2 * k) * k;
+  return drop + (restY - drop) * eased;
+};
+
+for (const e of ENTITIES) {
+  if (e.type !== 'spider') continue;
+  const px = (e.x + 0.5) * TILE;
+  const surface = surfaceUnder(e.x);
+  if (surface === null) continue; // already reported by the creature-reach pass
+  const restY = (e.hang ?? CEIL_BOTTOM) * TILE;
+  const playerTop = surface - PLAYER_BODY_H;
+
+  for (const lead of wakeLeads(px)) {
+    const t0 = (e.phase || 0) * e.period + lead;
+
+    // Sample the whole crossing. The player's x at any instant is fixed by the constant
+    // scroll speed, so the only answers are vertical: stay on the ground and pass under,
+    // or jump and pass over. Both require the spider to hold still about it — a spider
+    // that changes state mid-crossing answers both at once, and no telegraph helps,
+    // because there is no input that changes where the player is.
+    let blocking = 0;
+    let clear = 0;
+    let highest = Infinity;
+    for (let dt = -CROSS_MS / 2; dt <= CROSS_MS / 2; dt += 2) {
+      const y = spiderYAt(t0 + dt, e, restY);
+      const top = y - CREATURE_BODY_H / 2;
+      const bottom = y + CREATURE_BODY_H / 2;
+      if (bottom > playerTop && top < surface) blocking++;
+      else clear++;
+      highest = Math.min(highest, top);
+    }
+
+    const how = lead === WAKE_LEAD_MS ? 'on the run-up' : `after respawning ${((lead * RUN_SPEED) / 1000).toFixed(0)}px back`;
+
+    if (blocking && clear) {
+      errors.push(
+        `spider at x=${e.x} moves in or out of the runner's lane while the player is crossing it ` +
+          `${how} — running into it is a hit and jumping rises into it, and the player cannot ` +
+          `change where they are. Retime it (phase) so it has settled before the crossing.`
+      );
+    } else if (blocking) {
+      // Committed to a jump: the player has to get above the spider's highest point for
+      // the whole crossing.
+      const needed = surface - highest + 2;
+      if (needed > FULL_APEX) {
+        errors.push(
+          `spider at x=${e.x} blocks the lane ${how} and needs ${needed.toFixed(0)}px of clearance, ` +
+            `more than a full jump (${FULL_APEX.toFixed(0)}px) — there is no way past it`
+        );
+      }
+    }
+  }
+}
+
+const MIN_HOP_PX = arcPoints(0, 2, { fromFrac: 0, toFrac: 1 })[1].x;
+const SAFE_HAZARD_TO_LIP = MIN_HOP_PX + 48;
+notes.push(`shortest possible hop: ${MIN_HOP_PX.toFixed(0)}px (${(MIN_HOP_PX / TILE).toFixed(1)} tiles)`);
+
+// --- dangling spiders --------------------------------------------------------
+// A spider that rests below the ceiling is a ceiling for the *player*: you pass under it
+// on the ground and you may not jump through it. That is a good beat, and an unfair one
+// the moment the player is obliged to jump anyway, so each one has to be checked against
+// every reason this level has for leaving the ground.
+for (const e of ENTITIES) {
+  if (e.type !== 'spider' || e.hang === undefined) continue;
+  const px = (e.x + 0.5) * TILE;
+  const surface = surfaceUnder(e.x);
+  if (surface === null) {
+    errors.push(`dangling spider at x=${e.x} hangs over a pit — it can only be met mid-jump`);
+    continue;
+  }
+
+  const belly = e.hang * TILE + CREATURE_BODY_H / 2;
+  const headroom = surface - PLAYER_BODY_H - belly;
+  if (headroom < 8) {
+    errors.push(
+      `dangling spider at x=${e.x} hangs at y=${belly}px with only ${headroom}px above a runner's ` +
+        `head — there is no duck in this game, so it is an unavoidable wall`
+    );
+  }
+
+  // Worth having at all: it must sit inside the jump envelope, or it is scenery.
+  const jumpClearance = surface - PLAYER_BODY_H - belly;
+  if (jumpClearance > FULL_APEX) {
+    warnings.push(
+      `dangling spider at x=${e.x} hangs above the top of a full jump (${jumpClearance}px of ` +
+        `${FULL_APEX.toFixed(0)}px) — it never constrains the player`
+    );
+  }
+
+  // Not in the flight path of a jump the player has no choice about.
+  for (const pit of pits) {
+    const from = pit.start * TILE - TILE;
+    const to = (pit.end + 1) * TILE + PLAYER_BODY_W + TILE;
+    if (px >= from && px <= to) {
+      errors.push(
+        `dangling spider at x=${e.x} sits in the flight path of the pit at ${pit.start}-${pit.end} ` +
+          `— the player must be airborne there and cannot pass under it`
+      );
+    }
+  }
+
+  // Not within a hop of a ground hazard either: hopping that hazard flies into it.
+  for (const h of ENTITIES) {
+    if (h.type !== 'stalagmite' && h.type !== 'spikes') continue;
+    if (Math.abs((h.x + 0.5) * TILE - px) < MIN_HOP_PX) {
+      errors.push(
+        `dangling spider at x=${e.x} is within one hop of the ${h.type} at x=${h.x} — clearing the ` +
+          `${h.type} puts the player straight into it`
+      );
+    }
+  }
+}
+
 // --- hazards before pit lips -------------------------------------------------
 // Hopping a ground hazard commits the player to a fixed arc. The shortest jump the
 // controls can produce still carries ~150px of airtime, so a hazard sitting closer than
 // that to the next pit lip means the hop itself lands in the pit, leaving only a
 // frame-tight early hop plus a buffered re-jump. That is not a readable challenge.
-const MIN_HOP_PX = arcPoints(0, 2, { fromFrac: 0, toFrac: 1 })[1].x;
-const SAFE_HAZARD_TO_LIP = MIN_HOP_PX + 48;
-notes.push(`shortest possible hop: ${MIN_HOP_PX.toFixed(0)}px (${(MIN_HOP_PX / TILE).toFixed(1)} tiles)`);
 
 const pitStarts = pits.map((p) => p.start);
 const hoppables = [

@@ -229,7 +229,13 @@ export class Spider extends Entity {
     super.spawn(def);
     this.t = (def.phase || 0) * (def.period || 2500);
     this.thread.setVisible(true);
-    this.anchorY = def.y;
+    // Two different heights. The silk is always tied to the ceiling; `hang` is where the
+    // spider rests between drops. Left unset it rests at the ceiling, which is the
+    // original behaviour. Set lower, the spider dangles in mid-air and becomes an
+    // obstacle in the other direction: everything else in this game punishes *not*
+    // jumping, and a dangling spider punishes jumping.
+    this.ceilingY = def.y;
+    this.anchorY = def.hang ?? def.y;
     this.setScale(1);
   }
 
@@ -275,8 +281,8 @@ export class Spider extends Entity {
     this.setTexture(spread ? KEYS.spiderSpread : KEYS.spiderTuck);
     this.setScale(1 + windup * 0.14);
 
-    const len = Math.max(2, y - this.anchorY);
-    this.thread.setPosition(this.def.x, this.anchorY - 4);
+    const len = Math.max(2, y - this.ceilingY);
+    this.thread.setPosition(this.def.x, this.ceilingY - 4);
     this.thread.setSize(2, len);
     this.thread.setAlpha(0.35 + windup * 0.5);
   }
