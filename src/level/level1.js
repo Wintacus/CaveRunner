@@ -11,11 +11,16 @@
  *    2-13  playable air
  *    14-17 bedrock floor (14 is the walkable surface)
  *
- * Pacing reference: the runner covers 300px/s = 9.375 tiles/s.
- *   Segment 1  x   0-168   ~18s   Entrance          -> checkpoint 1 @ 166
- *   Segment 2  x 168-393   ~24s   Bats              -> checkpoint 2 @ 376, power-up @ 386
- *   Segment 3  x 394-655   ~28s   Spiders + combo   -> checkpoint 3 @ 648
- *   Segment 4  x 656-828   ~18s   Finale            -> goal @ 828
+ * Pacing reference: the runner covers 330px/s = 10.3 tiles/s.
+ *   Segment 1  x   0-168   ~16s   Entrance          -> checkpoint 1 @ 166
+ *   Segment 2  x 168-393   ~22s   Bats              -> checkpoint 2 @ 376, power-up @ 386
+ *   Segment 3  x 394-655   ~25s   Spiders + combo   -> checkpoint 3 @ 648
+ *   Segment 4  x 656-812   ~15s   Finale            -> goal @ 812
+ *
+ * Obstacle placement is paced against `tools/pacing-report.mjs`: device testing found a
+ * third of the run was spent watching rather than playing, concentrated in four stretches
+ * of 4.5-7s. The calm beat immediately after each checkpoint is deliberate and protected —
+ * that is where a player recovers after a respawn.
  */
 
 import { arcPoints, holdForGap } from '../physics/jump-model.js';
@@ -46,7 +51,8 @@ export const PLATFORMS = [
   { x: 52, w: 19, top: 14, kind: 'ground' }, // gap 49-51 (3)
   { x: 75, w: 22, top: 14, kind: 'ground' }, // gap 71-74 (4)
   { x: 101, w: 18, top: 12, kind: 'ledge' }, // gap 97-100 (4), first step up
-  { x: 123, w: 93, top: 14, kind: 'ground' }, // gap 119-122 (4) — long calm run, checkpoint 1
+  { x: 123, w: 27, top: 14, kind: 'ground' }, // gap 119-122 (4)
+  { x: 153, w: 63, top: 14, kind: 'ground' }, // gap 150-152 (3) — breaks up the run to checkpoint 1
 
   // ---- Segment 2: Bats ----------------------------------------------------
   // Terrain stays simple on purpose: the only new thing here is creature timing.
@@ -121,9 +127,12 @@ export const DECOR = [
 // ---------------------------------------------------------------------------
 
 const hazards = [
-  // Segment 1 — two lone stalagmites, both on long flat runs with clear sightlines.
+  // Segment 1 — lone stalagmites on long flat runs with clear sightlines. The last one
+  // sits after checkpoint 1: the stretch from there to the first bat used to be 6.4s of
+  // nothing to do.
   { type: 'stalagmite', x: 62, y: 14 },
   { type: 'stalagmite', x: 140, y: 14 },
+  { type: 'stalagmite', x: 186, y: 14 },
 
   // Segment 2 — one static obstacle only; bats are the new idea here.
   { type: 'stalagmite', x: 340, y: 14 },
@@ -133,6 +142,7 @@ const hazards = [
   { type: 'spikes', x: 545, y: 14, w: 3 },
   { type: 'stalactite', x: 563, len: 5 }, // over the pit at 561-565: punishes over-jumping
   { type: 'stalagmite', x: 606, y: 12 }, // kept clear of the pit lip at 616 (see below)
+  { type: 'stalagmite', x: 638, y: 14 }, // fills the long approach to checkpoint 3
 
   // Segment 4 — remix only.
   // A stalagmite used to sit at 740, three tiles before the pit lip at 743. There is no
@@ -141,7 +151,8 @@ const hazards = [
   // early hop plus a buffered re-jump. The ledge has nowhere else to put it either — the
   // landing zone from the previous pit covers its left half, and the bat at 734 covers
   // the rest — so it is gone. The finale still remixes bats, a spider and spikes.
-  { type: 'spikes', x: 756, y: 14, w: 3 }
+  { type: 'spikes', x: 756, y: 14, w: 3 },
+  { type: 'spikes', x: 794, y: 14, w: 3 } // last beat before the run-in to the goal
 ];
 
 const creatures = [
@@ -159,6 +170,10 @@ const creatures = [
 
   // --- Spiders (segment 3) --------------------------------------------------
   // Drop from the ceiling on a beat: wind-up shake -> fast drop -> hang -> retract.
+  // Bridges the quiet stretch after checkpoint 2, far enough ahead of the first spider to
+  // leave that creature its own clean teaching moment.
+  { type: 'bat', x: 392, yTop: 9.5, yBottom: 13, period: 2600, phase: 0.3 },
+
   { type: 'spider', x: 408, drop: 13, period: 2800, phase: 0 }, // solo, flat ground: teaches the beat
   { type: 'spider', x: 436, drop: 13, period: 2600, phase: 0 },
   { type: 'spider', x: 446, drop: 13, period: 2600, phase: 0.5 },
@@ -173,6 +188,10 @@ const creatures = [
   { type: 'spider', x: 604, drop: 11, period: 2400, phase: 0.2 },
 
   // --- Finale ---------------------------------------------------------------
+  // After checkpoint 3, keeping the run into the finale honest.
+  { type: 'spider', x: 660, drop: 13, period: 2400, phase: 0.4 },
+  { type: 'bat', x: 672, yTop: 9.5, yBottom: 13, period: 2200, phase: 0.6 },
+
   { type: 'bat', x: 692, yTop: 8, yBottom: 11, period: 2200, phase: 0.2 },
   { type: 'spider', x: 712, drop: 10, period: 2200, phase: 0.35 },
   { type: 'bat', x: 734, yTop: 9, yBottom: 12, period: 2000, phase: 0.5 },
@@ -184,7 +203,7 @@ const progression = [
   { type: 'checkpoint', x: 376, y: 14, index: 2 },
   { type: 'powerup', x: 386, y: 12.8 }, // banked right before the hardest stretch
   { type: 'checkpoint', x: 648, y: 14, index: 3 },
-  { type: 'goal', x: 828, y: 14 }
+  { type: 'goal', x: 812, y: 14 } // ~1.5s of clear run-in, was 5.5s
 ];
 
 // --- Crystals ---------------------------------------------------------------
@@ -251,21 +270,26 @@ pitArc(97);
 trail(103, 116, 11, 3);
 pitArc(119);
 trail(126, 138, 13, 4);
-trail(146, 162, 13, 4);
+trail(144, 148, 13, 2);
+pitArc(150);
+trail(156, 162, 13, 3);
+trail(170, 182, 13, 4);
+trail(191, 197, 13, 3); // clear of the stalagmite at 186
 
 // Segment 2 — arcs over the gaps, plus a high trail under the bats' top position.
 pitArc(216);
 trail(222, 230, 13, 4);
 trail(242, 262, 13, 5);
 pitArc(263);
-trail(269, 283, 11, 3);
+trail(269, 272, 11, 3);
+trail(279, 283, 11, 4); // clear of the bat at 276
 pitArc(286);
 trail(294, 318, 13, 4);
 pitArc(321);
 trail(327, 338, 13, 4);
 trail(344, 364, 13, 5);
 pitArc(366);
-trail(392, 418, 13, 5);
+trail(396, 418, 13, 5); // starts clear of the bat at 392
 
 // Segment 3 — sparser: attention belongs on the creatures here.
 pitArc(421);
@@ -275,7 +299,8 @@ trail(456, 470, 11, 4);
 pitArc(473);
 trail(482, 504, 13, 6);
 pitArc(507);
-trail(513, 529, 10, 4);
+trail(513, 521, 10, 4);
+trail(529, 529, 10, 4); // clear of the bat at 526
 pitArc(531);
 trail(538, 543, 13, 3);
 gem(551, 13);
@@ -283,24 +308,31 @@ gem(556, 13);
 pitArc(561, 3, { holdMs: 90 }); // forced low: the stalactite tip hangs over this pit
 trail(568, 588, 13, 5);
 pitArc(591);
-trail(598, 604, 11, 3);
-trail(610, 614, 11, 4); // split around the stalagmite at 606
+trail(598, 601, 11, 3);
+trail(610, 614, 11, 4); // split around the stalagmite at 606 and the spider at 604
 pitArc(616);
-trail(624, 646, 13, 5);
-trail(654, 678, 13, 4);
+trail(624, 634, 13, 5); // stops short of the stalagmite at 638
+trail(642, 656, 13, 4);
+trail(664, 669, 13, 5); // clear of the spider at 660
+trail(675, 678, 13, 3); // and of the bat at 672
 
 // Segment 4 — dense reward line through the staircase, then a victory run.
 pitArc(681);
-trail(687, 699, 11, 3);
+trail(686, 690, 11, 4);
+trail(695, 699, 11, 4); // clear of the bat at 692
 pitArc(701);
-trail(707, 719, 10, 3);
+trail(707, 710, 10, 3);
+trail(715, 719, 10, 4); // clear of the spider at 712
 pitArc(721);
-trail(728, 737, 11, 3); // stops short of the stalagmite at 740
+trail(728, 731, 11, 3);
+trail(737, 741, 11, 4); // clear of the bat at 734
 pitArc(743);
 trail(750, 754, 13, 2);
-trail(761, 774, 13, 3);
+trail(760, 764, 13, 4);
+trail(769, 774, 13, 3); // clear of the bat at 766
 pitArc(776);
-trail(783, 825, 13, 3);
+trail(783, 791, 13, 3);
+trail(800, 810, 13, 3); // run-in to the goal at 812
 
 export const ENTITIES = [...progression, ...hazards, ...creatures, ...crystals];
 

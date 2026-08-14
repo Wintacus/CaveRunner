@@ -76,7 +76,9 @@ const result = await page.evaluate(async (frameMs) => {
     return bot.rng / 2147483648;
   };
 
-  const RUN = 300;
+  // Read the run speed off the live body rather than hardcoding it, so the bot's
+  // arrival-time predictions stay correct when the game's speed is retuned.
+  const RUN = Math.abs(scene.player.body.velocity.x) || 330;
   const BODY_H = 34;
 
   const decide = (dt) => {

@@ -136,6 +136,21 @@ for (const e of ENTITIES) {
   }
 }
 
+// A crystal sitting in a creature's path is the same bait in motion: the player reaches
+// for it exactly where the bat sweeps or the spider drops.
+for (const e of ENTITIES) {
+  if (e.type !== 'crystal') continue;
+  for (const c of ENTITIES) {
+    if (c.type !== 'bat' && c.type !== 'spider') continue;
+    if (Math.abs(e.x - c.x) >= 1.2) continue;
+    const band = c.type === 'bat' ? [c.yTop, c.yBottom] : [CEIL_BOTTOM, c.drop];
+    if (e.y > band[0] - 0.6 && e.y < band[1] + 0.6) {
+      warnings.push(`crystal at (${e.x},${e.y}) sits in the path of the ${c.type} at x=${c.x}`);
+      break;
+    }
+  }
+}
+
 // --- crystals over pits ------------------------------------------------------
 // A pickup hanging over a pit has to sit on a path the player can actually fly. The
 // failure this guards against: a gem at take-off height just past the lip. It reads as a

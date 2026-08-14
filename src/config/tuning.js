@@ -11,8 +11,15 @@ export const TILE = 32;
 // ---------------------------------------------------------------------------
 // Movement
 // ---------------------------------------------------------------------------
-/** Constant auto-run speed. Fixed for this build — no ramping, no per-section variation. */
-export const RUN_SPEED = 300;
+/**
+ * Constant auto-run speed. Fixed for this build — no ramping, no per-section variation.
+ *
+ * Raised from 300 after device testing: too much of the run was spent watching rather than
+ * playing. Note that jump airtime is set by gravity alone, so horizontal reach scales with
+ * this number — every pit gets easier as it goes up, which is why the pacing fix pairs a
+ * modest speed bump with more obstacles rather than leaning on speed alone.
+ */
+export const RUN_SPEED = 330;
 
 /**
  * Delta-time cap. Resuming from a backgrounded tab/app can hand us a multi-second
