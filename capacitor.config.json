@@ -1,0 +1,18 @@
+{
+  "appId": "com.caverunner.game",
+  "appName": "Cave Runner",
+  "webDir": "dist",
+  "backgroundColor": "#05070dff",
+  "android": {
+    "backgroundColor": "#05070dff",
+    "allowMixedContent": false
+  },
+  "ios": {
+    "backgroundColor": "#05070dff",
+    "contentInset": "never",
+    "scrollEnabled": false
+  },
+  "plugins": {
+    "Haptics": {}
+  }
+}
