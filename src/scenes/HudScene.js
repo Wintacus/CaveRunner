@@ -74,11 +74,33 @@ export class HudScene extends Phaser.Scene {
    * API" (which is every iPhone on the web).
    */
   #buildDebugReadout() {
-    if (!new URLSearchParams(location.search).has('debug')) return;
-    this.debugText = this.add
-      .text(0, 0, '', { fontFamily: 'monospace', fontSize: '13px', color: '#8fb6cf' })
-      .setOrigin(0, 1)
-      .setDepth(60);
+    const params = new URLSearchParams(location.search);
+    // ?debug=1 draws the Arcade bodies too, and those outlines are themselves a rendering
+    // cost — enough to distort the numbers below. ?perf=1 is the honest measurement: the
+    // readout, with the game rendering exactly what it normally renders.
+    if (!params.has('debug') && !params.has('perf')) return;
+
+    if (params.has('debug')) {
+      this.debugText = this.add
+        .text(0, 0, '', { fontFamily: 'monospace', fontSize: '13px', color: '#8fb6cf' })
+        .setOrigin(0, 1)
+        .setDepth(60);
+    }
+
+    // Performance readout. Large on purpose: it is read on a phone, at arm's length,
+    // while the game is running, by someone who has no devtools to fall back on.
+    this.perfText = this.add
+      .text(0, 0, '', {
+        fontFamily: 'monospace',
+        fontSize: '17px',
+        color: '#7dffb0',
+        backgroundColor: '#000000cc',
+        padding: { x: 8, y: 6 }
+      })
+      .setOrigin(0, 0)
+      .setDepth(61);
+
+    this.perf = { frames: [], worst: 0, clamped: 0, since: 0 };
   }
 
   #buildPauseButton() {
@@ -157,6 +179,8 @@ export class HudScene extends Phaser.Scene {
 
     this.pauseBtn.setPosition(GAME_WIDTH - right - BTN / 2, top + BTN / 2);
     if (this.debugText) this.debugText.setPosition(left, GAME_HEIGHT - this.safe.bottom);
+    // Below the score and shield icons, clear of the pause button on the right.
+    if (this.perfText) this.perfText.setPosition(left, top + 78);
     this.#publishUiRects();
   }
 
@@ -191,12 +215,60 @@ export class HudScene extends Phaser.Scene {
   }
 
   update() {
+    if (this.perfText) this.#updatePerf();
     if (!this.debugText) return;
     this.debugText.setText(
       `haptics: ${hapticSupport.describe()}  |  last: ${lastHaptic.name} ` +
         `${lastHaptic.delivered ? 'sent' : 'not sent'}\n` +
         `native=${hapticSupport.native}  vibrate()=${hapticSupport.vibrationApi}`
     );
+  }
+
+  /**
+   * ?debug=1 only: what the device is actually doing.
+   *
+   * The line that matters most is `sim`. Phaser is configured with `fps.min`, which clamps
+   * the delta handed to the simulation; once the real frame time passes that clamp the game
+   * stops advancing real time and runs in *slow motion* rather than merely dropping frames.
+   * A phone at 24fps with everything moving at three-quarter speed and a phone at 55fps
+   * with a rendering glitch look similarly bad to the eye and need opposite fixes, so this
+   * prints both the raw frame time and the simulated one, and says outright when they have
+   * diverged.
+   */
+  #updatePerf() {
+    const loop = this.game.loop;
+    const p = this.perf;
+
+    p.frames.push(loop.rawDelta);
+    if (p.frames.length > 60) p.frames.shift();
+    p.worst = Math.max(p.worst, loop.rawDelta);
+    if (loop.rawDelta > loop.delta + 1) p.clamped++;
+
+    // Refresh the text a few times a second, not every frame: building a string and
+    // re-rasterising a Text object is itself work, and this must not distort what it measures.
+    p.since += loop.rawDelta;
+    if (p.since < 250) return;
+    p.since = 0;
+
+    const sorted = [...p.frames].sort((a, b) => a - b);
+    const median = sorted[Math.floor(sorted.length / 2)] || 0;
+    const fps = Math.round(loop.actualFps);
+    const slowMo = loop.rawDelta > loop.delta + 1;
+    const renderer = this.game.renderer.type === Phaser.WEBGL ? 'WebGL' : 'CANVAS(!)';
+    const game = this.scene.get('Game');
+    const objects = game?.children?.list?.length ?? 0;
+    const active = game?.director
+      ? [...game.director.pools.values()].reduce((n, pool) => n + pool.active.length, 0)
+      : 0;
+
+    this.perfText.setColor(fps >= 50 ? '#7dffb0' : fps >= 30 ? '#ffd479' : '#ff8080');
+    this.perfText.setText(
+      `fps ${fps}   frame ${median.toFixed(1)}ms   worst ${p.worst.toFixed(0)}ms\n` +
+        `raw ${loop.rawDelta.toFixed(1)}ms  sim ${loop.delta.toFixed(1)}ms` +
+        `${slowMo ? '  << SLOW-MO' : ''}\n` +
+        `${renderer}  objects ${objects}  creatures ${active}  clamped ${p.clamped}`
+    );
+    p.worst = 0;
   }
 
   showToast(message, colour = COLORS.teal) {

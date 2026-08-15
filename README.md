@@ -62,10 +62,22 @@ the art, because a crystal that looks collected should count.
 
 ### Tuning on a real device
 
-`?debug=1` on the URL draws the Arcade bodies. Change numbers in `src/config/tuning.js`,
-save, and Vite hot-reloads on the phone. If the tap-and-hold mechanic doesn't feel right in
-the hand, the fallback to a fixed-height jump is a two-line change: drop `HOLD_FORCE` to 0
-in the same file.
+`?debug=1` on the URL draws the Arcade bodies and the haptics readout. Change numbers in
+`src/config/tuning.js`, save, and Vite hot-reloads on the phone. If the tap-and-hold
+mechanic doesn't feel right in the hand, the fallback to a fixed-height jump is a two-line
+change: drop `HOLD_FORCE` to 0 in the same file.
+
+`?perf=1` prints what the device is actually doing — fps, median and worst frame time, the
+renderer in use, and live object counts. It deliberately does *not* draw the physics bodies,
+because those outlines cost enough to distort the numbers.
+
+The line to read is `sim`. Phaser is configured with `fps: { min: 30, smoothStep: true }`,
+which clamps the delta handed to the simulation, so a device slower than that stops
+advancing real time and runs in **slow motion** rather than dropping frames. `raw` is the
+real frame time and `sim` is what the game believed; when they diverge the readout says
+`SLOW-MO` and counts the clamped frames. A phone at 24fps in slow motion and a phone at
+55fps with a rendering glitch look equally wrong to the eye and need opposite fixes, which
+is the distinction this exists to make.
 
 ---
 
