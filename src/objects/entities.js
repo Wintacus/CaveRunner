@@ -389,6 +389,26 @@ export class Powerup extends Entity {
   }
 }
 
+/**
+ * Markers are triggers, and a trigger the player can jump over is a trigger they can miss.
+ *
+ * Both of these used to be short columns standing on the floor — 86px for a checkpoint,
+ * 140px for the goal — while a full-hold jump carries the runner's body to 190px up. So a
+ * committed jump sailed clean over the top of either: 102px clear of a checkpoint, 47px
+ * clear of the goal. Missing the goal is fatal, because the level simply ends and the
+ * runner falls off the far side of the last platform instead of winning; missing a
+ * checkpoint is quieter and nastier, since nothing tells the player and the next death
+ * sends them back further than they expect.
+ *
+ * The trigger now spans the whole column above the marker, so there is no height at which
+ * the player can be. Only the body changes — the sprite, its size and its pulse are
+ * untouched, and nothing about this is visible outside `?debug=1`.
+ */
+const fillColumn = (marker, width, offsetX, surfaceY) => {
+  marker.body.setSize(width, surfaceY, false);
+  marker.body.setOffset(offsetX, marker.height - surfaceY);
+};
+
 export class Checkpoint extends Entity {
   constructor(scene) {
     super(scene, KEYS.checkpointOff);
@@ -400,6 +420,7 @@ export class Checkpoint extends Entity {
 
   spawn(def) {
     super.spawn(def);
+    fillColumn(this, 34, 3, def.y);
     this.lit = !!def.lit;
     this.setTexture(this.lit ? KEYS.checkpointOn : KEYS.checkpointOff);
     this.t = 0;
@@ -428,6 +449,7 @@ export class Goal extends Entity {
 
   spawn(def) {
     super.spawn(def);
+    fillColumn(this, 44, 26, def.y);
     this.t = 0;
   }
 

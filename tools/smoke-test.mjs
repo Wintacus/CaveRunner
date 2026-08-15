@@ -108,6 +108,48 @@ const stats = await page.evaluate(() => {
 });
 
 console.log('stats:', JSON.stringify(stats));
+
+/**
+ * Markers have to be impossible to jump over.
+ *
+ * A checkpoint or goal is a trigger, and its reach is a property of the sprite body rather
+ * than of the level data, so the level validator cannot see it. It matters: both used to be
+ * short columns standing on the floor while a full-hold jump carries the runner 190px up,
+ * so a committed jump sailed clean over either. Over the goal that is fatal — the trigger
+ * never fires, the level simply ends and the runner falls off the far side of the last
+ * platform instead of winning.
+ */
+const markers = await page.evaluate(() => {
+  const scene = window.__game.scene.getScene('Game');
+  const out = [];
+  const TILE = 32;
+  let t = 0;
+  for (const tile of [166, 376, 648, 812]) {
+    scene.player.setFrozen(true);
+    scene.player.setPosition((tile - 8) * TILE, 13 * TILE);
+    scene.director.rewindTo((tile - 8) * TILE);
+    scene.cameras.main.setScroll((tile - 8) * TILE - 300, 0);
+    for (let i = 0; i < 30; i++) { t += 16.67; window.__game.step(t, 16.67); }
+    const e = [...scene.director.pools.values()].flatMap((p) => [...p.active])
+      .find((x) => (x.def?.type === 'checkpoint' || x.def?.type === 'goal') && Math.round(x.def.x / TILE - 0.5) === tile);
+    if (e) out.push({ type: e.def.type, tile, top: Math.round(e.body.top), surface: Math.round(e.def.y) });
+  }
+  return out;
+});
+
+// The runner's lowest point at the top of a full hold. Anything the trigger fails to reach
+// is a height at which the player passes straight through the marker.
+const APEX_PX = 190;
+const missable = markers.filter((m) => m.top > m.surface - APEX_PX);
+console.log(`markers checked: ${markers.length}, jumpable-over: ${missable.length}`);
+if (markers.length < 4 || missable.length) {
+  console.error('\nmarker trigger check failed:');
+  if (markers.length < 4) console.error(`  only found ${markers.length} of 4 markers`);
+  missable.forEach((m) => console.error(`  ${m.type} at tile ${m.tile}: trigger starts at y=${m.top}, player clears it at y=${m.surface - APEX_PX}`));
+  await browser.close();
+  process.exit(1);
+}
+
 console.log(`screenshots -> ${path.relative(process.cwd(), shotDir)}`);
 
 await browser.close();

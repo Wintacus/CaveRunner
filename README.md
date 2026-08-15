@@ -306,6 +306,12 @@ runs three things:
    resolution, taps through the start screen, plays, opens and closes the pause menu, and
    fails on any console error, page exception or failed request. Screenshots land in
    `tools/shots/`.
+   It also asserts that every checkpoint and the goal are impossible to jump over. That is a
+   property of the sprite body rather than of the level data, so `validate-level.mjs` cannot
+   see it — and it mattered: all four markers were short columns standing on the floor while
+   a full-hold jump carries the runner 190px up, so a committed jump sailed clean over any of
+   them. Missing the goal is fatal, since the trigger never fires and the runner keeps going
+   off the far end of the last platform instead of winning.
 3. **`tools/autoplay.mjs`** — stops Phaser's RAF loop and steps the *real* game frame by
    frame with a scripted bot that reads the tilemap ahead of itself and predicts creature
    positions (`Bat.predictY` / `Spider.predictY`). It plays the entire level in a few
