@@ -165,19 +165,19 @@ const creatures = [
   // Slow, wide sweeps first; later ones are quicker and phase-offset against each other.
   // Low = jump over it, high = run underneath. Each one pauses and pulses at both
   // extremes before moving, so the pattern is readable a full beat ahead.
-  { type: 'bat', x: 200, yTop: 9.5, yBottom: 13, period: 3000, phase: 0 },
-  { type: 'bat', x: 232, yTop: 10, yBottom: 13, period: 2800, phase: 0.5 },
-  { type: 'bat', x: 250, yTop: 9.5, yBottom: 13, period: 2800, phase: 0 },
-  { type: 'bat', x: 276, yTop: 8, yBottom: 11, period: 2600, phase: 0.25 }, // over the ledge
-  { type: 'bat', x: 300, yTop: 10, yBottom: 13, period: 2400, phase: 0 },
-  { type: 'bat', x: 312, yTop: 10, yBottom: 13, period: 2400, phase: 0.5 }, // call-and-response pair
-  { type: 'bat', x: 352, yTop: 9.5, yBottom: 13, period: 2200, phase: 0.15 },
+  { type: 'bat', x: 200, yTop: 9.5, yBottom: 13, period: 3000, phase: 0.765 },
+  { type: 'bat', x: 232, yTop: 10, yBottom: 13, period: 2800, phase: 0.7 },
+  { type: 'bat', x: 250, yTop: 9.5, yBottom: 13, period: 2800, phase: 0.995 },
+  { type: 'bat', x: 276, yTop: 8, yBottom: 11, period: 2600, phase: 0.635 }, // over the ledge
+  { type: 'bat', x: 300, yTop: 10, yBottom: 13, period: 2400, phase: 0.875 },
+  { type: 'bat', x: 312, yTop: 10, yBottom: 13, period: 2400, phase: 0.555 }, // call-and-response pair
+  { type: 'bat', x: 352, yTop: 9.5, yBottom: 13, period: 2200, phase: 0.46 },
 
   // --- Spiders (segment 3) --------------------------------------------------
   // Drop from the ceiling on a beat: wind-up shake -> fast drop -> hang -> retract.
   // Bridges the quiet stretch after checkpoint 2, far enough ahead of the first spider to
   // leave that creature its own clean teaching moment.
-  { type: 'bat', x: 392, yTop: 9.5, yBottom: 13, period: 2600, phase: 0.3 },
+  { type: 'bat', x: 392, yTop: 9.5, yBottom: 13, period: 2600, phase: 0.635 },
 
   { type: 'spider', x: 408, drop: 13, period: 2800, phase: 0.77 }, // solo, flat ground: on the floor when the player arrives, so the first spider in the level teaches "jump it"
   // First dangling spider, and the level's introduction to the idea that a spider overhead
@@ -190,10 +190,10 @@ const creatures = [
   { type: 'spider', x: 462, drop: 11, period: 2400, phase: 0.825 }, // onto the ledge — climbing away as the player reaches it: the instinct is to jump, and jumping is the hit
 
   // --- Combined challenge ---------------------------------------------------
-  { type: 'bat', x: 486, yTop: 9.5, yBottom: 13, period: 2400, phase: 0.3 },
+  { type: 'bat', x: 486, yTop: 9.5, yBottom: 13, period: 2400, phase: 0.855 },
   { type: 'spider', x: 519, drop: 10, period: 2400, phase: 0.655 },
-  { type: 'bat', x: 523, yTop: 6.5, yBottom: 10, period: 2200, phase: 0.5 }, // 8 tiles clear of the lip at 531
-  { type: 'bat', x: 575, yTop: 10, yBottom: 13, period: 2200, phase: 0.1 },
+  { type: 'bat', x: 523, yTop: 6.5, yBottom: 10, period: 2200, phase: 0.46 }, // 8 tiles clear of the lip at 531
+  { type: 'bat', x: 575, yTop: 10, yBottom: 13, period: 2200, phase: 0.46 },
   // Same creature, opposite answer: this one is down on the floor when the player arrives,
   // so it has to be jumped. That contrast is the whole point of the dangle. 8 tiles clear
   // of the lip at 591.
@@ -214,16 +214,16 @@ const creatures = [
   // Phase 0.20 also keeps it honest on both approaches: dangling on the run-up, and down
   // on the floor (a 44px hop) when respawning from checkpoint 3, which wakes it late.
   { type: 'spider', x: 660, drop: 13, period: 2400, phase: 0.2, hang: 11 },
-  { type: 'bat', x: 672, yTop: 9.5, yBottom: 13, period: 2200, phase: 0.6 },
+  { type: 'bat', x: 672, yTop: 9.5, yBottom: 13, period: 2200, phase: 0.46 },
 
-  { type: 'bat', x: 692, yTop: 8, yBottom: 11, period: 2200, phase: 0.2 },
+  { type: 'bat', x: 692, yTop: 8, yBottom: 11, period: 2200, phase: 0.785 },
   { type: 'spider', x: 712, drop: 10, period: 2200, phase: 0.58 },
   // yBottom is one row above the ledge it flies over (top 12), matching every other bat's
   // 22px of belly clearance. At 12 it bottomed out 10px inside the slab, and since ledges
   // are three tiles thick with open air below and creatures draw over the tilemap, it read
   // as the bat sinking through the floor.
-  { type: 'bat', x: 734, yTop: 9, yBottom: 11, period: 2000, phase: 0.5 },
-  { type: 'bat', x: 766, yTop: 10, yBottom: 13, period: 2000, phase: 0.15 }
+  { type: 'bat', x: 734, yTop: 9, yBottom: 11, period: 2000, phase: 0.35 },
+  { type: 'bat', x: 766, yTop: 10, yBottom: 13, period: 2000, phase: 0.675 }
 ];
 
 /**

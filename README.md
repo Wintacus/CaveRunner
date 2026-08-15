@@ -119,6 +119,10 @@ the tuning constants and refuses to write a map that fails:
 - **dangling spiders**: enough headroom to run under, low enough to matter, never in the
   flight path of a jump the player has no choice about (a pit) or within one hop of a
   ground hazard
+- **bats at the crossing**: same question as spiders, different motion — no bat may drift
+  into or out of the runner's lane while the player passes it, none may block with more
+  clearance than a full jump, and one the player is meant to run under must leave at least
+  20px of daylight. Below that it is a graze rather than a designed near miss
 - **spider settle time**: a spider that is down when the player reaches it must have landed
   at least 400ms earlier. "Not mid-drop" is a weaker promise than it sounds — one that lands
   94ms before the crossing passes that check and is still, in play, a spider arriving on the
@@ -142,7 +146,12 @@ Both creature types are avoid-only — contact from any direction is a hit — a
 a readable, rhythmic pattern, never randomly.
 
 - **Bats** sweep vertically and pause at each extreme. Before leaving an extreme they spread
-  their wings wide, swell, and lean in the direction they're about to travel.
+  their wings wide, swell, and lean in the direction they're about to travel. Ten of the
+  fifteen are timed to sit in the *bottom* hold of that sweep as the player arrives, so they
+  are steady fences for 400-540ms rather than moving targets; the other five are climbing
+  away, low enough to read as an obstacle they have stopped being. Eleven of fifteen used to
+  be simply run under, several clearing the player's head by under 30px — one by a single
+  pixel, which is not a near miss anyone designed.
 - **Spiders** hang from the ceiling and drop on a beat: wind-up (legs spread, body shaking,
   silk thread taut), then the drop, a hang, and a slow retract. The cycle fractions live in
   `src/config/tuning.js` because the validator models the same motion. The drop used to be

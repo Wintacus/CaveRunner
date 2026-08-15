@@ -397,6 +397,81 @@ const MIN_HOP_PX = arcPoints(0, 2, { fromFrac: 0, toFrac: 1 })[1].x;
 const SAFE_HAZARD_TO_LIP = MIN_HOP_PX + 48;
 notes.push(`shortest possible hop: ${MIN_HOP_PX.toFixed(0)}px (${(MIN_HOP_PX / TILE).toFixed(1)} tiles)`);
 
+// --- bats at the crossing ----------------------------------------------------
+// Same question as the spiders, different motion. A bat sweeps slowly, so it is far less
+// of an ambush, but "you always run underneath it" is the failure that actually happened:
+// eleven of fifteen asked nothing of the player, and several of those cleared their head by
+// almost nothing — one by a single pixel — which is not a near miss anyone designed.
+const BAT_HOLD = 0.18;
+const BAT_MOVE = 0.32;
+const BAT_BODY_W = 26;
+const BAT_CROSS_MS = ((PLAYER_BODY_W + BAT_BODY_W) / RUN_SPEED) * 1000;
+
+/** Minimum daylight for a bat the player is meant to run under. Below this it is a graze. */
+const BAT_MIN_CLEARANCE_PX = 20;
+
+const easeInOut = (t) => 0.5 - 0.5 * Math.cos(Math.PI * Math.min(Math.max(t, 0), 1));
+
+const batYAt = (t, e) => {
+  const per = e.period;
+  const top = e.yTop * TILE;
+  const bot = e.yBottom * TILE;
+  const p = ((((t % per) + per) % per) / per);
+  if (p < BAT_HOLD) return top;
+  if (p < BAT_HOLD + BAT_MOVE) return top + (bot - top) * easeInOut((p - BAT_HOLD) / BAT_MOVE);
+  if (p < BAT_HOLD * 2 + BAT_MOVE) return bot;
+  return bot + (top - bot) * easeInOut((p - BAT_HOLD * 2 - BAT_MOVE) / BAT_MOVE);
+};
+
+for (const e of ENTITIES) {
+  if (e.type !== 'bat') continue;
+  const surface = surfaceUnder(e.x);
+  if (surface === null) continue; // reported by the creature-reach pass
+  const playerTop = surface - PLAYER_BODY_H;
+  const t0 = (e.phase || 0) * e.period + ARRIVAL_OFFSET_MS;
+
+  let blocking = 0;
+  let clear = 0;
+  let highest = Infinity;
+  let lowestBelly = -Infinity;
+  for (let dt = -BAT_CROSS_MS / 2; dt <= BAT_CROSS_MS / 2; dt += 2) {
+    const y = batYAt(t0 + dt, e);
+    const top = y - CREATURE_BODY_H / 2;
+    const bottom = y + CREATURE_BODY_H / 2;
+    if (bottom > playerTop && top < surface) blocking++;
+    else clear++;
+    highest = Math.min(highest, top);
+    lowestBelly = Math.max(lowestBelly, bottom);
+  }
+
+  const gap = playerTop - lowestBelly;
+
+  if (blocking && clear) {
+    errors.push(
+      `bat at x=${e.x} crosses into or out of the runner's lane while the player passes it — ` +
+        `whether it connects is decided by a pixel rather than by anything the player did`
+    );
+  } else if (blocking) {
+    const needed = surface - highest + 2;
+    if (needed > FULL_APEX) {
+      errors.push(
+        `bat at x=${e.x} blocks the lane and needs ${needed.toFixed(0)}px of clearance, more than ` +
+          `a full jump (${FULL_APEX.toFixed(0)}px) — there is no way past it`
+      );
+    }
+  } else if (gap < BAT_MIN_CLEARANCE_PX) {
+    errors.push(
+      `bat at x=${e.x} passes ${gap.toFixed(0)}px over the player's head — too fine to be a ` +
+        `designed near miss, and it reads as unfair on the run where it does connect`
+    );
+  } else if (gap > IDLE_CLEARANCE_PX) {
+    warnings.push(
+      `bat at x=${e.x} passes ${gap.toFixed(0)}px over the player's head — out of reach and out ` +
+        `of mind, so it asks nothing of them`
+    );
+  }
+}
+
 // --- dangling spiders --------------------------------------------------------
 // A spider that rests below the ceiling is a ceiling for the *player*: you pass under it
 // on the ground and you may not jump through it. That is a good beat, and an unfair one
