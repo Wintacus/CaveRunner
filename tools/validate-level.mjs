@@ -8,7 +8,10 @@ import {
   PLAYER_BODY_W,
   PLAYER_BODY_H,
   GAME_WIDTH,
-  ACTIVATION_MARGIN
+  ACTIVATION_MARGIN,
+  SPIDER_WINDUP,
+  SPIDER_DROP,
+  SPIDER_HANG
 } from '../src/config/tuning.js';
 
 const errors = [];
@@ -271,13 +274,17 @@ for (const e of ENTITIES) {
 // The encounter is exactly computable: creatures wind their clock back by the journey the
 // runner still has to make, so the cycle time at the crossing is the same from any wake
 // distance and on any approach.
-const SPIDER_WINDUP = 0.32;
-const SPIDER_DROP = 0.1;
-const SPIDER_HANG = 0.22;
 const WAKE_LEAD_PX = GAME_WIDTH - 300 + ACTIVATION_MARGIN; // runner sits 300px from the left edge
 const WAKE_LEAD_MS = (WAKE_LEAD_PX / RUN_SPEED) * 1000;
 const SPIDER_BODY_W = 22;
 const CROSS_MS = ((PLAYER_BODY_W + SPIDER_BODY_W) / RUN_SPEED) * 1000;
+
+/**
+ * How long a spider must already be on the floor when the player arrives. At 370px/s this
+ * is about 150px of run-up with the obstacle plainly in the way, on top of the fall itself
+ * being visible before that.
+ */
+const SPIDER_SETTLE_MS = 400;
 
 /**
  * Creatures wind their clock back by the journey the runner still has to make (see
@@ -346,6 +353,20 @@ for (const e of ENTITIES) {
         errors.push(
           `spider at x=${e.x} blocks the lane and needs ${needed.toFixed(0)}px of clearance, ` +
             `more than a full jump (${FULL_APEX.toFixed(0)}px) — there is no way past it`
+        );
+      }
+
+      // ...and it has to have been there long enough to read. "Not mid-drop" is a weaker
+      // promise than it sounds: a spider that landed 94ms before the crossing passes that
+      // check and is still, in play, a spider arriving on the player's head. The obstacle
+      // has to be standing in the way before the player is committed, or the only way to
+      // learn it is to be hit by it once.
+      const cycle = (((t0 % e.period) + e.period) % e.period);
+      const settled = cycle - (SPIDER_WINDUP + SPIDER_DROP) * e.period;
+      if (settled < SPIDER_SETTLE_MS) {
+        errors.push(
+          `spider at x=${e.x} lands only ${settled.toFixed(0)}ms before the player reaches it ` +
+            `(want ${SPIDER_SETTLE_MS}ms) — it drops onto the player rather than standing in the way`
         );
       }
     }

@@ -101,6 +101,26 @@ export const INVULN_FLASH_MS = 90;
 export const RESPAWN_DELAY_MS = 480;
 
 // ---------------------------------------------------------------------------
+// Creatures
+// ---------------------------------------------------------------------------
+/**
+ * The spider's cycle, as fractions of its period (they must sum to 1).
+ *
+ * Lives here rather than on the class because the level validator has to model the same
+ * motion, and two copies of these numbers is exactly the kind of thing that silently
+ * drifts apart.
+ *
+ * `drop` was 0.1 — a 352px fall in about 240ms, near enough 1500px/s. Device testing found
+ * that unreadable: the spider sat on the ceiling for the whole approach and then arrived on
+ * the player's head, which cannot be answered by paying attention, only by already knowing.
+ * A longer drop makes the fall itself the telegraph, and a longer hang gives the player a
+ * window in which it is simply an obstacle standing in the way.
+ */
+export const SPIDER_WINDUP = 0.28;
+export const SPIDER_DROP = 0.18;
+export const SPIDER_HANG = 0.3;
+
+// ---------------------------------------------------------------------------
 // Camera
 // ---------------------------------------------------------------------------
 /** Player sits this far from the left edge, leaving ~2/3 of the screen as look-ahead. */

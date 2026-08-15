@@ -188,7 +188,7 @@ const creatures = [
   // put the player into it. Wide flat ground with nothing forcing a jump, so learning it
   // costs nothing.
   { type: 'spider', x: 436, drop: 13, period: 2600, phase: 0.15, hang: 9 },
-  { type: 'spider', x: 443, drop: 13, period: 2600, phase: 0.5 }, // 8 tiles clear of the lip at 451
+  { type: 'spider', x: 443, drop: 13, period: 2600, phase: 0.715 }, // 8 tiles clear of the lip at 451
   { type: 'spider', x: 462, drop: 11, period: 2400, phase: 0.2 }, // onto the ledge
 
   // --- Combined challenge ---------------------------------------------------
@@ -196,10 +196,10 @@ const creatures = [
   { type: 'spider', x: 519, drop: 10, period: 2400, phase: 0 },
   { type: 'bat', x: 523, yTop: 6.5, yBottom: 10, period: 2200, phase: 0.5 }, // 8 tiles clear of the lip at 531
   { type: 'bat', x: 575, yTop: 10, yBottom: 13, period: 2200, phase: 0.1 },
-  // Same creature, opposite answer: phase 0.45 has it down on the floor when the player
-  // arrives, so this one has to be jumped. That contrast is the whole point of the
-  // dangle. 8 tiles clear of the lip at 591.
-  { type: 'spider', x: 583, drop: 13, period: 2200, phase: 0.45, hang: 9 },
+  // Same creature, opposite answer: this one is down on the floor when the player arrives,
+  // so it has to be jumped. That contrast is the whole point of the dangle. 8 tiles clear
+  // of the lip at 591.
+  { type: 'spider', x: 583, drop: 13, period: 2200, phase: 0.58, hang: 9 },
   { type: 'spider', x: 604, drop: 11, period: 2400, phase: 0.2 },
 
   // --- Finale ---------------------------------------------------------------
@@ -219,7 +219,7 @@ const creatures = [
   { type: 'bat', x: 672, yTop: 9.5, yBottom: 13, period: 2200, phase: 0.6 },
 
   { type: 'bat', x: 692, yTop: 8, yBottom: 11, period: 2200, phase: 0.2 },
-  { type: 'spider', x: 712, drop: 10, period: 2200, phase: 0.35 },
+  { type: 'spider', x: 712, drop: 10, period: 2200, phase: 0.58 },
   // yBottom is one row above the ledge it flies over (top 12), matching every other bat's
   // 22px of belly clearance. At 12 it bottomed out 10px inside the slab, and since ledges
   // are three tiles thick with open air below and creatures draw over the tilemap, it read

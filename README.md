@@ -111,6 +111,10 @@ the tuning constants and refuses to write a map that fails:
 - **dangling spiders**: enough headroom to run under, low enough to matter, never in the
   flight path of a jump the player has no choice about (a pit) or within one hop of a
   ground hazard
+- **spider settle time**: a spider that is down when the player reaches it must have landed
+  at least 400ms earlier. "Not mid-drop" is a weaker promise than it sounds — one that lands
+  94ms before the crossing passes that check and is still, in play, a spider arriving on the
+  player's head
 - checkpoint/power-up/goal counts, and a pacing report per segment
 
 Change `RUN_SPEED` or any jump constant and the validator re-checks the whole level against
@@ -131,8 +135,13 @@ a readable, rhythmic pattern, never randomly.
 
 - **Bats** sweep vertically and pause at each extreme. Before leaving an extreme they spread
   their wings wide, swell, and lean in the direction they're about to travel.
-- **Spiders** hang from the ceiling and drop on a beat: a third of the cycle is wind-up
-  (legs spread, body shaking, silk thread taut), then a fast drop, a hang, and a slow retract.
+- **Spiders** hang from the ceiling and drop on a beat: wind-up (legs spread, body shaking,
+  silk thread taut), then the drop, a hang, and a slow retract. The cycle fractions live in
+  `src/config/tuning.js` because the validator models the same motion. The drop used to be
+  10% of the cycle — 352px in ~240ms, near 1500px/s — which device testing found
+  unreadable: the spider sat on the ceiling for the whole approach and arrived on the
+  player's head. It is now 18%, so the fall itself is the telegraph, with a longer hang so
+  it stands in the way as an obstacle rather than an ambush.
 - **Dangling spiders** (`hang` on the def) rest partway down instead of at the ceiling. The
   silk still runs to the ceiling; only the resting height moves. This is the one obstacle in
   the game that punishes *jumping* rather than not jumping: it occupies a band of air, so

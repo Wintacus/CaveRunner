@@ -1,5 +1,14 @@
 import Phaser from 'phaser';
-import { COLORS, RUN_SPEED, GAME_WIDTH, CAMERA_LEAD, ACTIVATION_MARGIN } from '../config/tuning.js';
+import {
+  COLORS,
+  RUN_SPEED,
+  GAME_WIDTH,
+  CAMERA_LEAD,
+  ACTIVATION_MARGIN,
+  SPIDER_WINDUP,
+  SPIDER_DROP,
+  SPIDER_HANG
+} from '../config/tuning.js';
 import { KEYS } from '../gfx/textures.js';
 
 /**
@@ -243,9 +252,9 @@ export class Bat extends Entity {
  * thread goes taut — before the fast drop. Then it hangs, then reels back up slowly.
  */
 export class Spider extends Entity {
-  static WINDUP = 0.32;
-  static DROP = 0.1;
-  static HANG = 0.22;
+  static WINDUP = SPIDER_WINDUP;
+  static DROP = SPIDER_DROP;
+  static HANG = SPIDER_HANG;
 
   constructor(scene) {
     super(scene, KEYS.spiderTuck);
