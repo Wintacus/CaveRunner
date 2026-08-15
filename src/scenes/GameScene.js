@@ -28,6 +28,7 @@ export class GameScene extends Phaser.Scene {
 
   create() {
     this.state = STATE.RUNNING;
+    this.holdFromDevice = false;
     this.elapsed = 0;
     this.deaths = 0;
     this.crystals = 0;
@@ -138,23 +139,73 @@ export class GameScene extends Phaser.Scene {
     this.input.on('pointerdown', (pointer) => {
       if (this.#pointerHitsUi(pointer)) return; // the pause button is not a jump
       if (this.state !== STATE.RUNNING) return;
+      this.holdFromDevice = true;
       this.player.requestJump();
     });
 
-    this.input.on('pointerup', () => {
+    // Both events, because Phaser only emits `pointerup` when the release lands on the
+    // canvas element itself; lift a finger over the letterbox bar beside it and you get
+    // `pointerupoutside` instead. Listening for one and not the other silently drops the
+    // release, and a dropped release is not a small bug: the variable-height boost keeps
+    // applying for its full HOLD_MAX_MS, so a 50ms tap that should hop 92px jumps the full
+    // 190px. It reads in the hand as the character suddenly floating.
+    const release = () => {
       const stillHeld = this.input.manager.pointers.some((p) => p.isDown);
-      if (!stillHeld) this.player.releaseJump();
-    });
+      if (!stillHeld) {
+        this.holdFromDevice = false;
+        this.player.releaseJump();
+      }
+    };
+    this.input.on('pointerup', release);
+    this.input.on('pointerupoutside', release);
 
     const kb = this.input.keyboard;
+    this.jumpKeys = [];
     if (kb) {
-      const down = () => this.state === STATE.RUNNING && this.player.requestJump();
-      const up = () => this.player.releaseJump();
+      const down = () => {
+        if (this.state !== STATE.RUNNING) return;
+        this.holdFromDevice = true;
+        this.player.requestJump();
+      };
       kb.on('keydown-SPACE', down);
-      kb.on('keyup-SPACE', up);
       kb.on('keydown-UP', down);
-      kb.on('keyup-UP', up);
+      // Held state is read off the key objects rather than keyup events, for the same
+      // reason as the pointer: a keyup can go missing (window blur mid-press is the usual
+      // way) and a missed release is what turns a tap into a full-height jump.
+      this.jumpKeys = [kb.addKey('SPACE'), kb.addKey('UP')];
     }
+  }
+
+  /**
+   * Is any jump input actually held right now?
+   *
+   * Deliberately derived from live input state every frame rather than tracked through
+   * down/up events. Events are the fast path and they are wired up, but every event scheme
+   * has some route by which the release goes missing — released over a letterbox bar,
+   * pointer cancelled by the OS, window blurred mid-press — and the failure is silent and
+   * badly out of proportion: the variable-height boost runs to its cap and every tap
+   * becomes a maximum jump until something happens to clear it. State that is recomputed
+   * cannot latch.
+   */
+  #jumpHeld() {
+    if (this.input.manager.pointers.some((p) => p.isDown)) return true;
+    return this.jumpKeys.some((k) => k.isDown);
+  }
+
+  /**
+   * Clear a held jump the moment the finger or key that started it is no longer down.
+   *
+   * Scoped to holds that a *device* started, which matters more than it looks: the
+   * autoplay harness drives `requestJump`/`releaseJump` on the player directly and never
+   * touches a pointer, so an unscoped version of this reads "nothing is held" every frame
+   * and cancels the bot's hold instantly. Every jump it makes becomes a bare tap, and it
+   * stops being able to clear the wider pits — 49 deaths and no finish, which is how this
+   * got caught.
+   */
+  #releaseIfDeviceLetGo() {
+    if (!this.holdFromDevice || this.#jumpHeld()) return;
+    this.holdFromDevice = false;
+    this.player.releaseJump();
   }
 
   /** HUD buttons publish their screen rects; taps inside them must not also jump. */
@@ -168,6 +219,8 @@ export class GameScene extends Phaser.Scene {
     // Delta-time everything, capped: a 120Hz phone, a 60Hz phone and a phone resuming
     // from the background must all produce the same run.
     const dt = Math.min(delta, MAX_DELTA_MS);
+
+    this.#releaseIfDeviceLetGo();
 
     if (this.state === STATE.RUNNING) {
       this.elapsed += dt;

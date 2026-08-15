@@ -52,6 +52,14 @@ constants. The controller (`src/objects/player.js`) implements:
   instead of floaty.
 - **Coyote time** (`COYOTE_MS`, 140ms) — jumping just after stepping off an edge still works.
 - **Jump buffering** (`JUMP_BUFFER_MS`, 150ms) — a tap just before landing fires on touchdown.
+- **Releases are derived, not trusted.** Phaser emits `pointerup` only when the finger lifts
+  *on the canvas element*; lift it over the letterbox bar beside the canvas and you get
+  `pointerupoutside` instead. Both are handled, and on top of that the held state is
+  recomputed from live pointer/key state every frame, so it cannot latch. The failure this
+  guards against is silent and wildly out of proportion: a dropped release leaves the
+  variable-height boost running to its 270ms cap, so a 50ms tap that should hop 92px jumps
+  the full 190px. The per-frame check is scoped to holds a device started — the autoplay
+  harness drives the player API directly and an unscoped version cancels its holds.
 - **Delta time everywhere,** capped at `MAX_DELTA_MS`. Timing windows are counted down with
   the frame delta rather than read off a wall clock, and Arcade runs in `fixedStep` mode, so
   a 60Hz phone, a 120Hz phone and a phone resuming from the background all play identically.
