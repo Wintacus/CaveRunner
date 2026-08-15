@@ -96,7 +96,10 @@ the tuning constants and refuses to write a map that fails:
 - warnings for jumps with under 20% margin
 - entities buried in rock, floating over pits, or sitting at the wrong surface height
 - **creature reach**: a bat at the bottom of its sweep, or a spider at full extension, must
-  actually intersect a runner standing on the ground below it, or it is a decorative threat
+  actually intersect a runner standing on the ground below it, or it is a decorative threat —
+  and must not reach *through* that surface either. Both are measured against the surface
+  under the creature rather than the global floor row, since a creature over a ledge can sit
+  well above row 14 and still be buried in the slab it is flying over
 - **anything hoppable, too close to a pit lip**: stalagmites, spikes, and any creature that
   reaches the ground lane. Hopping one commits you to a fixed arc, so if the next lip is
   nearer than the shortest possible hop, the hop itself lands in the pit and there is no

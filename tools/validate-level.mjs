@@ -109,13 +109,11 @@ for (const e of ENTITIES) {
 
   if (e.type === 'bat') {
     if (e.yTop < CEIL_BOTTOM + 0.5) errors.push(`bat at x=${e.x} sweeps into the ceiling`);
-    if (e.yBottom > FLOOR_TOP - 0.5) errors.push(`bat at x=${e.x} sweeps into the floor`);
     if (e.yBottom - e.yTop < 1.5) warnings.push(`bat at x=${e.x} has a very small sweep, may read as static`);
     hazardXs.push(e.x);
   }
 
   if (e.type === 'spider') {
-    if (e.drop > FLOOR_TOP - 0.5) errors.push(`spider at x=${e.x} drops into the floor`);
     hazardXs.push(e.x);
   }
 
@@ -241,6 +239,18 @@ for (const e of ENTITIES) {
   const creatureTop = low - CREATURE_BODY_H / 2;
   const creatureBottom = low + CREATURE_BODY_H / 2;
   const overlap = Math.min(creatureBottom, surface) - Math.max(creatureTop, playerTop);
+  // ...and it must not reach *through* that surface. `FLOOR_TOP` is the wrong reference
+  // for this: a creature over a ledge can sit well above row 14 and still be buried in the
+  // slab it is flying over. Ledges are three tiles thick with open air underneath and
+  // creatures draw above the tilemap, so the failure looks like the creature sinking below
+  // the ground rather than clipping into it.
+  if (creatureBottom > surface) {
+    errors.push(
+      `${e.type} at x=${e.x} reaches y=${creatureBottom}px, ${(creatureBottom - surface).toFixed(0)}px ` +
+        `below the surface it is over (y=${surface}px) — it flies through the ground`
+    );
+  }
+
   if (overlap < 6) {
     errors.push(
       `${e.type} at x=${e.x} bottoms out at y=${low}px, which misses a runner standing at ` +

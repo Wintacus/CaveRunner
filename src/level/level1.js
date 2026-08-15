@@ -220,7 +220,11 @@ const creatures = [
 
   { type: 'bat', x: 692, yTop: 8, yBottom: 11, period: 2200, phase: 0.2 },
   { type: 'spider', x: 712, drop: 10, period: 2200, phase: 0.35 },
-  { type: 'bat', x: 734, yTop: 9, yBottom: 12, period: 2000, phase: 0.5 },
+  // yBottom is one row above the ledge it flies over (top 12), matching every other bat's
+  // 22px of belly clearance. At 12 it bottomed out 10px inside the slab, and since ledges
+  // are three tiles thick with open air below and creatures draw over the tilemap, it read
+  // as the bat sinking through the floor.
+  { type: 'bat', x: 734, yTop: 9, yBottom: 11, period: 2000, phase: 0.5 },
   { type: 'bat', x: 766, yTop: 10, yBottom: 13, period: 2000, phase: 0.15 }
 ];
 
