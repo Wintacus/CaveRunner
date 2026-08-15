@@ -287,6 +287,13 @@ const CROSS_MS = ((PLAYER_BODY_W + SPIDER_BODY_W) / RUN_SPEED) * 1000;
 const SPIDER_SETTLE_MS = 400;
 
 /**
+ * Above this much daylight over the player's head, a spider is scenery: too high to
+ * threaten, too high to make anyone hesitate. Below it the player still has to decide
+ * whether to jump, which is the point of the creature being there at all.
+ */
+const IDLE_CLEARANCE_PX = 110;
+
+/**
  * Creatures wind their clock back by the journey the runner still has to make (see
  * `seedClock` in src/objects/entities.js), so the cycle time at the crossing is fixed:
  * `phase * period + APPROACH_MS`, from any wake distance and on any approach. That is what
@@ -330,6 +337,7 @@ for (const e of ENTITIES) {
     let blocking = 0;
     let clear = 0;
     let highest = Infinity;
+    let lowestBelly = -Infinity;
     for (let dt = -CROSS_MS / 2; dt <= CROSS_MS / 2; dt += 2) {
       const y = spiderYAt(t0 + dt, e, restY);
       const top = y - CREATURE_BODY_H / 2;
@@ -337,6 +345,18 @@ for (const e of ENTITIES) {
       if (bottom > playerTop && top < surface) blocking++;
       else clear++;
       highest = Math.min(highest, top);
+      lowestBelly = Math.max(lowestBelly, bottom);
+    }
+
+    // A spider parked near the ceiling as the player runs underneath asks nothing of them.
+    // It is not unfair, so this is a warning rather than an error — but a creature the
+    // player never has to answer is just scenery that costs a pooled object, and four of
+    // the nine were sitting like this before anyone noticed.
+    if (!blocking && playerTop - lowestBelly > IDLE_CLEARANCE_PX) {
+      warnings.push(
+        `spider at x=${e.x} passes ${(playerTop - lowestBelly).toFixed(0)}px over the player's head ` +
+          `— out of reach and out of mind, so it asks nothing of them`
+      );
     }
 
     if (blocking && clear) {

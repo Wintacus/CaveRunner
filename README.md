@@ -148,6 +148,17 @@ a readable, rhythmic pattern, never randomly.
   running underneath is always safe and leaving the ground near it may not be. Three of them
   are placed, at tiles 436, 583 and 660.
 
+Every spider is timed to ask the player something at the moment they reach it. Five are on
+the floor and have to be jumped; two are dangling at head height, where no jump clears them
+and the answer is to stay on the ground; two are climbing away as the player arrives, low
+enough to read as an obstacle when they are already leaving. Four of the nine used to be
+parked at the ceiling as the player ran underneath, which is a pooled object and a piece of
+level spent on nothing.
+
+The climbing pair are a deliberate fake-out, and worth stating precisely: running straight
+through is clean, a *tap* is a hit, and a full hold clears over the top. What gets punished
+is the hesitant hop, not the commitment.
+
 Every cue is shape + motion, not colour, so it reads for colourblind players.
 
 Creature phase is deterministic *relative to the player's approach*: a creature winds its
