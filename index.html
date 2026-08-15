@@ -61,7 +61,12 @@
         position: fixed;
         inset: 0;
         width: 100%;
+        /* 100% resolves against the layout viewport, which on iOS stays full height even
+           while the browser chrome covers part of it — the canvas then fits an area that
+           is partly off screen. dvh tracks the *visible* viewport; JS overrides this with
+           a measured visualViewport height where one is reported. */
         height: 100%;
+        height: 100dvh;
         touch-action: none;
       }
 

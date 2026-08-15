@@ -177,6 +177,16 @@ cycle time at the crossing agrees to within one frame across wake distances from
   pull-to-refresh and rubber-banding; `touchmove`, `contextmenu` and iOS `gesture*` events
   are cancelled. This matters because players tap and hold rapidly near the top of the
   screen, which is exactly where those gestures live.
+- **Canvas fit.** `#game` is `position: fixed`, and on iOS a fixed element sizes to the
+  *layout* viewport, which stays full height whether or not the browser chrome is on screen
+  — so the canvas gets fitted into an area partly hidden behind that chrome and drawn
+  smaller than the room available. Phaser's ScaleManager only listens to `resize` and
+  `orientationchange`, and iOS reports the chrome collapsing on `visualViewport` instead, so
+  the stale size survives until something else forces a re-fit. `trackVisualViewport`
+  (`src/systems/lifecycle.js`) drives the container height from `visualViewport` and
+  re-measures on every viewport signal. Note that `ScaleManager.refresh()` re-runs the fit
+  maths but does *not* re-measure the parent — `getParentBounds()` does, and without it the
+  new size is only picked up by Phaser's own 500ms poll.
 - **Safe areas, landscape-first.** In landscape the notch moves to the *side*, so the HUD is
   laid out from `env(safe-area-inset-*)` read through a hidden probe element and converted
   to game units. A 20px minimum buffer is applied on every edge regardless, because some

@@ -71,6 +71,59 @@ export function getSafeArea(game) {
 }
 
 /**
+ * Keep the canvas filling the space that is actually visible.
+ *
+ * Two things conspire on a phone browser. `#game` is `position: fixed; inset: 0`, and on
+ * iOS a fixed element sizes to the *layout* viewport, which stays full height whether or
+ * not the browser chrome is on screen — so Phaser fits the canvas into an area partly
+ * hidden behind that chrome and centres what is left, drawing the game smaller than the
+ * room available. And Phaser's ScaleManager only listens to `resize` and
+ * `orientationchange`; iOS reports the chrome collapsing on `visualViewport` instead, which
+ * Phaser never hears, so whatever size the canvas took at load survives until something
+ * else happens to trigger a re-fit.
+ *
+ * Driving the container's height from `visualViewport` and refreshing the scale manager
+ * when it changes fixes both. Scale mode stays FIT: the design space is still 960x540, so
+ * every distance tuned against it — the look-ahead above all — is untouched.
+ */
+export function trackVisualViewport(game) {
+  const el = document.getElementById('game');
+  const vv = window.visualViewport;
+  if (!el) return;
+
+  let queued = false;
+  const apply = () => {
+    queued = false;
+    // `100dvh` covers most browsers, but in-app WebViews report it inconsistently, so the
+    // real measurement wins where it is available.
+    if (vv) el.style.height = `${Math.round(vv.height)}px`;
+    // `refresh()` re-runs the fit maths but does *not* re-measure the parent element;
+    // `getParentBounds()` is what samples it. Without this the new size is only picked up
+    // by Phaser's own poll, which runs every `resizeInterval` (500ms) — long enough to see
+    // the canvas visibly settle a beat after the browser chrome moves.
+    game.scale.getParentBounds();
+    game.scale.refresh();
+  };
+  // Chrome collapse fires a burst of events; one re-fit per frame is plenty.
+  const schedule = () => {
+    if (queued) return;
+    queued = true;
+    requestAnimationFrame(apply);
+  };
+
+  if (vv) {
+    vv.addEventListener('resize', schedule);
+    vv.addEventListener('scroll', schedule);
+  }
+  // The inline height above *overrides* the stylesheet, so it has to be refreshed on every
+  // signal that the viewport moved — not just the visualViewport ones. Miss one and the
+  // container stays pinned at a stale size, which is worse than never having measured.
+  window.addEventListener('resize', schedule);
+  window.addEventListener('orientationchange', () => setTimeout(schedule, 120));
+  apply();
+}
+
+/**
  * Pause the game loop and audio the moment the app leaves the foreground (incoming call,
  * app switch, screen lock) and resume cleanly when it comes back.
  */

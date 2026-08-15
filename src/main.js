@@ -6,7 +6,7 @@ import { MenuScene } from './scenes/MenuScene.js';
 import { GameScene } from './scenes/GameScene.js';
 import { HudScene } from './scenes/HudScene.js';
 import { WinScene } from './scenes/WinScene.js';
-import { installAutoPause } from './systems/lifecycle.js';
+import { installAutoPause, trackVisualViewport } from './systems/lifecycle.js';
 import { audio } from './systems/audio.js';
 
 // ?debug=1 draws Arcade bodies — useful when tuning hitboxes on a device.
@@ -49,6 +49,9 @@ const game = new Phaser.Game({
   autoFocus: true,
   scene: [BootScene, PreloadScene, MenuScene, GameScene, HudScene, WinScene]
 });
+
+// Keep the canvas sized to the visible viewport, not the layout one.
+trackVisualViewport(game);
 
 // Auto-pause on backgrounding: the HUD listens for this and puts up the pause menu, so
 // the player never comes back to a run already in progress.
