@@ -92,8 +92,7 @@ the tuning constants and refuses to write a map that fails:
 - **spiders that move while you cross them**: the runner's x at any instant is fixed by the
   constant scroll speed, so the only answers to a spider are vertical — under it, or over
   it. One that enters or leaves the lane mid-crossing answers both, and no telegraph helps.
-  Checked at every wake distance the spider can be approached from, including respawns,
-  which wake it later in its cycle than the run-up does
+  One check covers every approach, because arrival timing no longer depends on wake distance
 - **dangling spiders**: enough headroom to run under, low enough to matter, never in the
   flight path of a jump the player has no choice about (a pit) or within one hop of a
   ground hazard
@@ -127,9 +126,19 @@ a readable, rhythmic pattern, never randomly.
 
 Every cue is shape + motion, not colour, so it reads for colourblind players.
 
-Creature phase is deterministic *relative to the player's approach*: a creature's clock
-starts at `phase * period` the moment it wakes ahead of the camera, including after a
-respawn. The beat you learn on attempt 3 is the beat you get on attempt 30.
+Creature phase is deterministic *relative to the player's approach*: a creature winds its
+clock back by the journey the runner still has to make, so it is at `phase * period +
+APPROACH_MS` at the instant you reach it — from any distance, on any approach. The beat you
+learn on attempt 3 is the beat you get on attempt 30.
+
+This used to be seeded from the moment a creature woke instead, which tied the beat to how
+far away it happened to wake. That is not constant: respawning at a checkpoint 384px short
+of a creature wakes it immediately, delivering you two seconds earlier in its cycle than a
+clean run-up does. One spider was consequently dangling overhead on the approach — run
+under it — and lying in the lane after every respawn — jump it — from a single `phase`,
+which made every death in the finale a guaranteed second death. Measured after the fix, the
+cycle time at the crossing agrees to within one frame across wake distances from 160px to
+909px.
 
 ---
 

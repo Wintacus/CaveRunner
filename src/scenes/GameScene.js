@@ -175,7 +175,7 @@ export class GameScene extends Phaser.Scene {
     }
 
     const cam = this.cameras.main;
-    this.director.update(dt, cam.scrollX, GAME_WIDTH);
+    this.director.update(dt, cam.scrollX, GAME_WIDTH, this.player.x);
     this.parallax.update(cam);
     this.#updateSigns(cam);
 

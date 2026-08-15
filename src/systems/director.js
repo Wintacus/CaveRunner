@@ -36,7 +36,7 @@ export class Director {
     return pool;
   }
 
-  #obtain(def) {
+  #obtain(def, playerX) {
     const pool = this.#pool(def.type);
     let entity = pool.free.pop();
     if (!entity) {
@@ -45,7 +45,7 @@ export class Director {
       entity = new Klass(this.scene);
       this.groups[ENTITY_GROUPS[def.type]].add(entity);
     }
-    entity.spawn(def);
+    entity.spawn(def, playerX);
     pool.active.push(entity);
     return entity;
   }
@@ -64,13 +64,19 @@ export class Director {
     this.#release(entity);
   }
 
-  update(dt, scrollX, viewWidth) {
+  /**
+    * `playerX` is passed down to spawning creatures so they can wind their cycle clock back
+    * by the journey still ahead of the runner. Without it the beat would depend on how far
+    * away the creature happened to wake, which differs between a clean run-up and a respawn
+    * at a nearby checkpoint.
+    */
+  update(dt, scrollX, viewWidth, playerX) {
     const wakeAt = scrollX + viewWidth + ACTIVATION_MARGIN;
     const sleepAt = scrollX - RECYCLE_MARGIN;
 
     while (this.cursor < this.defs.length && this.defs[this.cursor].x <= wakeAt) {
       const def = this.defs[this.cursor++];
-      if (!def.taken) this.#obtain(def);
+      if (!def.taken) this.#obtain(def, playerX);
     }
 
     for (const pool of this.pools.values()) {
@@ -85,7 +91,8 @@ export class Director {
   /**
    * Rewind the world to a checkpoint: everything currently on stage goes back to its pool,
    * pickups taken after the checkpoint come back, and the spawn cursor jumps back so the
-   * upcoming stretch repopulates (with creature phases restarting on approach).
+   * upcoming stretch repopulates. Creatures reseed their clocks from the distance the
+   * runner has left to cover, so the beat after a respawn matches the beat on the run-up.
    */
   rewindTo(x) {
     for (const pool of this.pools.values()) {

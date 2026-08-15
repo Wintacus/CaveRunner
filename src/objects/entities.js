@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { COLORS } from '../config/tuning.js';
+import { COLORS, RUN_SPEED, GAME_WIDTH, CAMERA_LEAD, ACTIVATION_MARGIN } from '../config/tuning.js';
 import { KEYS } from '../gfx/textures.js';
 
 /**
@@ -10,13 +10,44 @@ import { KEYS } from '../gfx/textures.js';
  * (`body.moves = false`, gravity off) — Arcade still syncs them from the sprite transform
  * each step, which lets each class drive its own motion while overlap tests keep working.
  *
- * Creature timing is driven by a per-instance clock that starts at `phase * period` the
- * moment the creature wakes up ahead of the camera. That makes every pattern deterministic
- * relative to the player's approach: the beat you learn on attempt 3 is the same beat you
- * get on attempt 30, including after a respawn.
+ * Creature timing is driven by a per-instance clock seeded from the distance the runner
+ * still has to cover (see `seedClock`), not from the moment the creature happens to wake.
+ * That is what makes a pattern genuinely deterministic: the beat you learn on attempt 3 is
+ * the beat you get on attempt 30, whether you ran the whole way in or respawned at a
+ * checkpoint a few tiles short of it.
  */
 
 const easeInOut = (t) => 0.5 - 0.5 * Math.cos(Math.PI * Phaser.Math.Clamp(t, 0, 1));
+
+/**
+ * How far ahead of the runner a creature normally wakes: entities activate at the camera's
+ * right edge plus a margin, and the runner is drawn CAMERA_LEAD from the left edge.
+ */
+const APPROACH_PX = GAME_WIDTH + ACTIVATION_MARGIN - CAMERA_LEAD;
+const APPROACH_MS = (APPROACH_PX / RUN_SPEED) * 1000;
+
+/**
+ * Seed a creature's cycle clock.
+ *
+ * Starting the clock at `phase * period` on wake-up sounds deterministic and isn't: it ties
+ * the beat to *how far away the creature happened to wake*, and that distance is not always
+ * APPROACH_PX. Respawning at a checkpoint 384px short of a creature wakes it immediately,
+ * so it reaches the player two seconds earlier in its cycle than it does on a clean run-up.
+ * That is how one spider ended up dangling overhead on the approach — run under it — and
+ * lying on the floor after every respawn — jump it — from a single `phase`.
+ *
+ * Seeding from the time the player still needs to *travel* removes the dependency: the
+ * clock is wound back by exactly the journey, so the creature is at `phase * period +
+ * APPROACH_MS` at the moment the runner arrives, from any distance and on any approach.
+ * `phase` therefore keeps its existing meaning — where the creature is in its cycle as it
+ * comes into view on a normal run-up — and every level timing stays as authored.
+ */
+const seedClock = (def, playerX) => {
+  const period = def.period || 2500;
+  const travelMs = playerX === undefined ? APPROACH_MS : ((def.x - playerX) / RUN_SPEED) * 1000;
+  const t = (def.phase || 0) * period + APPROACH_MS - travelMs;
+  return ((t % period) + period) % period;
+};
 
 export class Entity extends Phaser.Physics.Arcade.Sprite {
   constructor(scene, texture) {
@@ -135,9 +166,9 @@ export class Bat extends Entity {
     this.open = true;
   }
 
-  spawn(def) {
+  spawn(def, playerX) {
     super.spawn(def);
-    this.t = (def.phase || 0) * (def.period || 2500);
+    this.t = seedClock(def, playerX);
     this.flapT = 0;
     this.halo.setVisible(true);
     this.setScale(1);
@@ -225,9 +256,9 @@ export class Spider extends Entity {
     this.t = 0;
   }
 
-  spawn(def) {
+  spawn(def, playerX) {
     super.spawn(def);
-    this.t = (def.phase || 0) * (def.period || 2500);
+    this.t = seedClock(def, playerX);
     this.thread.setVisible(true);
     // Two different heights. The silk is always tied to the ceiling; `hang` is where the
     // spider rests between drops. Left unset it rests at the ceiling, which is the

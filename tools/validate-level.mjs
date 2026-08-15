@@ -1,7 +1,7 @@
 // Checks the hand-authored level against the real jump physics before it is
 // compiled to a Tiled map. Catches "this gap is impossible" / "this stalagmite is
 // floating in the air" mistakes that are otherwise only findable by playing.
-import { PLATFORMS, ENTITIES, SEGMENTS, SPAWN, MAP_W, MAP_H, TILE, FLOOR_TOP, CEIL_BOTTOM } from '../src/level/level1.js';
+import { PLATFORMS, ENTITIES, SEGMENTS, MAP_W, MAP_H, TILE, FLOOR_TOP, CEIL_BOTTOM } from '../src/level/level1.js';
 import { reachForRise, apexHeight, arcPoints, holdForGap } from '../src/physics/jump-model.js';
 import {
   RUN_SPEED,
@@ -258,11 +258,9 @@ for (const e of ENTITIES) {
 // answers both — running into it is a hit, and jumping rises into it — and no amount of
 // telegraphing helps, because there is no input that changes where you are.
 //
-// The encounter is deterministic: a creature's clock starts when it wakes a fixed distance
-// ahead of the camera, so the phase it is in when the player reaches it can be computed
-// exactly. It has to be computed once per *approach*, though: respawning at a checkpoint
-// closer than the wake distance wakes the spider late, which lands the player at a
-// different point in its cycle than the fresh run-up does.
+// The encounter is exactly computable: creatures wind their clock back by the journey the
+// runner still has to make, so the cycle time at the crossing is the same from any wake
+// distance and on any approach.
 const SPIDER_WINDUP = 0.32;
 const SPIDER_DROP = 0.1;
 const SPIDER_HANG = 0.22;
@@ -271,21 +269,14 @@ const WAKE_LEAD_MS = (WAKE_LEAD_PX / RUN_SPEED) * 1000;
 const SPIDER_BODY_W = 22;
 const CROSS_MS = ((PLAYER_BODY_W + SPIDER_BODY_W) / RUN_SPEED) * 1000;
 
-const restartPoints = [
-  SPAWN.x,
-  ...ENTITIES.filter((e) => e.type === 'checkpoint').map((e) => e.x)
-].map((t) => (t + 0.5) * TILE);
-
-/** Every wake lead this spider can be approached with: the fresh run-up, and each respawn. */
-const wakeLeads = (px) => {
-  const leads = new Set([WAKE_LEAD_MS]);
-  for (const r of restartPoints) {
-    const d = px - r;
-    if (d > 0 && d < WAKE_LEAD_PX) leads.add((d / RUN_SPEED) * 1000);
-  }
-  return [...leads];
-};
-
+/**
+ * Creatures wind their clock back by the journey the runner still has to make (see
+ * `seedClock` in src/objects/entities.js), so the cycle time at the crossing is fixed:
+ * `phase * period + APPROACH_MS`, from any wake distance and on any approach. That is what
+ * makes one check here sufficient — before it, a respawn at a nearby checkpoint delivered
+ * the player to a completely different point in the creature's cycle than the run-up did,
+ * and a spider could be safely overhead one way and lying in the lane the other.
+ */
 /** The spider's centre y at cycle time `t` — the same motion the entity runs at play time. */
 const spiderYAt = (t, e, restY) => {
   const drop = e.drop * TILE;
@@ -301,6 +292,8 @@ const spiderYAt = (t, e, restY) => {
   return drop + (restY - drop) * eased;
 };
 
+const ARRIVAL_OFFSET_MS = WAKE_LEAD_MS;
+
 for (const e of ENTITIES) {
   if (e.type !== 'spider') continue;
   const px = (e.x + 0.5) * TILE;
@@ -309,8 +302,8 @@ for (const e of ENTITIES) {
   const restY = (e.hang ?? CEIL_BOTTOM) * TILE;
   const playerTop = surface - PLAYER_BODY_H;
 
-  for (const lead of wakeLeads(px)) {
-    const t0 = (e.phase || 0) * e.period + lead;
+  {
+    const t0 = (e.phase || 0) * e.period + ARRIVAL_OFFSET_MS;
 
     // Sample the whole crossing. The player's x at any instant is fixed by the constant
     // scroll speed, so the only answers are vertical: stay on the ground and pass under,
@@ -329,12 +322,10 @@ for (const e of ENTITIES) {
       highest = Math.min(highest, top);
     }
 
-    const how = lead === WAKE_LEAD_MS ? 'on the run-up' : `after respawning ${((lead * RUN_SPEED) / 1000).toFixed(0)}px back`;
-
     if (blocking && clear) {
       errors.push(
-        `spider at x=${e.x} moves in or out of the runner's lane while the player is crossing it ` +
-          `${how} — running into it is a hit and jumping rises into it, and the player cannot ` +
+        `spider at x=${e.x} moves in or out of the runner's lane while the player is crossing it — ` +
+          `running into it is a hit and jumping rises into it, and the player cannot ` +
           `change where they are. Retime it (phase) so it has settled before the crossing.`
       );
     } else if (blocking) {
@@ -343,7 +334,7 @@ for (const e of ENTITIES) {
       const needed = surface - highest + 2;
       if (needed > FULL_APEX) {
         errors.push(
-          `spider at x=${e.x} blocks the lane ${how} and needs ${needed.toFixed(0)}px of clearance, ` +
+          `spider at x=${e.x} blocks the lane and needs ${needed.toFixed(0)}px of clearance, ` +
             `more than a full jump (${FULL_APEX.toFixed(0)}px) — there is no way past it`
         );
       }
