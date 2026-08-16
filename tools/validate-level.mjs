@@ -11,8 +11,7 @@ import {
   GAME_WIDTH,
   ACTIVATION_MARGIN,
   SPIDER_WINDUP,
-  SPIDER_DROP,
-  SPIDER_HANG
+  SPIDER_DROP
 } from '../src/config/tuning.js';
 
 const errors = [];
