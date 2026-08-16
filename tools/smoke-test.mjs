@@ -110,6 +110,32 @@ const stats = await page.evaluate(() => {
 console.log('stats:', JSON.stringify(stats));
 
 /**
+ * SPRITE_SIZES has to describe every texture the game actually makes.
+ *
+ * It is the list a replacement art pack gets generated against, and the hand-maintained
+ * version had gone quietly wrong: six of ten entries disagreed with the texture produced,
+ * thirteen keys were missing, and the character entries gave the art size while the texture
+ * is 16px larger on each axis to leave room for the glow. It is now filled in as the
+ * textures are drawn; this checks that nothing is missing and that the map is honest.
+ */
+const sizes = await page.evaluate(() => {
+  const t = window.__game.scene.getScene('Game').textures;
+  return Object.entries(window.__spriteSizes || {}).map(([key, wh]) => {
+    const src = t.exists(key) && t.get(key).getSourceImage();
+    return { key, declared: wh, actual: src ? [src.width, src.height] : null };
+  });
+});
+const sizeProblems = sizes.filter((s) => !s.actual || s.actual[0] !== s.declared[0] || s.actual[1] !== s.declared[1]);
+console.log(`sprite sizes checked: ${sizes.length}, mismatched: ${sizeProblems.length}`);
+if (sizes.length < 20 || sizeProblems.length) {
+  console.error('\nSPRITE_SIZES check failed:');
+  if (sizes.length < 20) console.error(`  only ${sizes.length} textures recorded, expected every key`);
+  sizeProblems.forEach((s) => console.error(`  ${s.key}: declared ${s.declared}, actual ${s.actual}`));
+  await browser.close();
+  process.exit(1);
+}
+
+/**
  * Markers have to be impossible to jump over.
  *
  * A checkpoint or goal is a trigger, and its reach is a property of the sprite body rather

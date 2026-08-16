@@ -1,7 +1,6 @@
 import Phaser from 'phaser';
 import {
   GAME_WIDTH,
-  GAME_HEIGHT,
   TILE,
   MAX_DELTA_MS,
   CAMERA_LEAD,

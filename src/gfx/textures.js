@@ -7,9 +7,16 @@
  *
  * ART SWAP POINT — when AI-generated sprite sheets arrive (transparent PNG, grid-based,
  * rows = animation states, columns = frames), delete the matching `make*` call below and
- * load the atlas in PreloadScene instead. Texture keys and frame names used by the game
- * are listed in KEYS, and the sizes each sprite expects are in SPRITE_SIZES, so the
- * generated art can be produced to match.
+ * load the atlas in PreloadScene instead. `KEYS` lists every texture key the game uses and
+ * `SPRITE_SIZES` gives the pixel size of each one, so replacement art can be produced to
+ * match.
+ *
+ * SPRITE_SIZES is filled in by `canvasTexture` as the textures are drawn rather than
+ * maintained by hand. The hand-written version had drifted badly — six of its ten entries
+ * disagreed with the texture actually produced, it was missing thirteen of the twenty-three
+ * keys, and it conflated two different measurements, since the character sprites are drawn
+ * into a canvas 16px larger than the art on each axis to leave room for the glow. Anyone
+ * generating art to those numbers would have produced the wrong thing.
  */
 import { COLORS } from '../config/tuning.js';
 
@@ -39,18 +46,13 @@ export const KEYS = {
   bgNear: 'bg_near'
 };
 
-export const SPRITE_SIZES = {
-  [KEYS.player]: [30, 42],
-  [KEYS.batOpen]: [40, 30],
-  [KEYS.spiderTuck]: [34, 30],
-  [KEYS.crystal]: [20, 26],
-  [KEYS.mushroom]: [30, 30],
-  [KEYS.checkpointOff]: [26, 74],
-  [KEYS.goal]: [64, 128],
-  [KEYS.stalagmite]: [34, 54],
-  [KEYS.stalactite]: [40, 32], // 32px tall unit, stretched to the authored length
-  [KEYS.spike]: [32, 22]
-};
+/**
+ * Pixel dimensions of every generated texture, keyed as in KEYS. Populated at boot by
+ * `canvasTexture`, so it always describes what the game actually draws — this is the size
+ * a replacement PNG needs to be, glow padding included.
+ */
+export const SPRITE_SIZES = {};
+
 
 const hex = (n) => `#${n.toString(16).padStart(6, '0')}`;
 const rgba = (n, a) => {
@@ -62,6 +64,7 @@ const rgba = (n, a) => {
 
 /** Create (or replace) a canvas-backed texture and hand its 2D context to `draw`. */
 function canvasTexture(scene, key, w, h, draw) {
+  SPRITE_SIZES[key] = [w, h]; // the record of what was drawn, so it cannot disagree with it
   if (scene.textures.exists(key)) scene.textures.remove(key);
   const tex = scene.textures.createCanvas(key, w, h);
   const ctx = tex.getContext();

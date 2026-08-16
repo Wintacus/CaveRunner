@@ -8,6 +8,7 @@ import { HudScene } from './scenes/HudScene.js';
 import { WinScene } from './scenes/WinScene.js';
 import { installAutoPause, trackVisualViewport } from './systems/lifecycle.js';
 import { audio } from './systems/audio.js';
+import { SPRITE_SIZES } from './gfx/textures.js';
 
 // ?debug=1 draws Arcade bodies — useful when tuning hitboxes on a device.
 const debugPhysics = new URLSearchParams(location.search).has('debug');
@@ -71,3 +72,4 @@ export default game;
 
 // Exposed for the headless smoke test / debugging in devtools.
 window.__game = game;
+window.__spriteSizes = SPRITE_SIZES;

@@ -103,12 +103,17 @@ export const RESPAWN_DELAY_MS = 480;
 // ---------------------------------------------------------------------------
 // Creatures
 // ---------------------------------------------------------------------------
+// Both cycles live here rather than on their classes because the level validator models
+// the same motion (via physics/creature-motion.js), and two copies of these numbers is
+// exactly the kind of thing that drifts apart without anyone noticing.
+
+/** The bat's sweep, as fractions of its period: parked, travelling, parked, travelling. */
+export const BAT_HOLD = 0.18;
+export const BAT_MOVE = 0.32;
+
 /**
- * The spider's cycle, as fractions of its period (they must sum to 1).
- *
- * Lives here rather than on the class because the level validator has to model the same
- * motion, and two copies of these numbers is exactly the kind of thing that silently
- * drifts apart.
+ * The spider's cycle, as fractions of its period. Wind-up, drop, hang, and the remainder
+ * is the retract, so these must sum to less than 1.
  *
  * `drop` was 0.1 — a 352px fall in about 240ms, near enough 1500px/s. Device testing found
  * that unreadable: the spider sat on the ceiling for the whole approach and then arrived on

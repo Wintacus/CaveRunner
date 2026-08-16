@@ -284,12 +284,19 @@ All sprites, the parallax layers and the tileset are drawn procedurally
 light, plus three parallax depth layers and drifting spores. There are no binary art assets
 to manage yet, and the whole look is one file to re-tune.
 
-**Swapping in AI-generated sprites**: `KEYS` and `SPRITE_SIZES` in `src/gfx/textures.js` list
-every texture key the game uses and the size each one expects. Generate transparent-background
-PNG sheets to those sizes (grid layout: rows = animation states, columns = frames), load them
-as atlases in `PreloadScene`, and delete the matching `make*` call. Packing them into a single
-atlas at that point is also the moment to cut draw calls, which the current one-texture-per-
-sprite approach doesn't do.
+**Swapping in AI-generated sprites**: `KEYS` in `src/gfx/textures.js` lists every texture key
+the game uses, and `SPRITE_SIZES` gives the pixel size of each one. Generate
+transparent-background PNG sheets to those sizes (grid layout: rows = animation states,
+columns = frames), load them as atlases in `PreloadScene`, and delete the matching `make*`
+call. Packing them into a single atlas at that point is also the moment to cut draw calls,
+which the current one-texture-per-sprite approach doesn't do.
+
+`SPRITE_SIZES` is populated as the textures are drawn rather than written by hand, and the
+smoke test asserts it matches. It was hand-maintained until it wasn't worth trusting: six of
+ten entries disagreed with the texture actually produced, thirteen of the twenty-three keys
+were missing, and the character entries gave the *art* size while the texture is 16px larger
+on each axis to leave room for the glow — so art generated to that list would have come back
+the wrong size.
 
 ---
 
@@ -316,8 +323,8 @@ runs three things:
    frame with a scripted bot that reads the tilemap ahead of itself and predicts creature
    positions (`Bat.predictY` / `Spider.predictY`). It plays the entire level in a few
    seconds, exercising streaming, pooling, checkpoints, respawns and the goal. Current
-   result: reaches the win screen in ~70s of game time with no deaths, 155 crystals, and 36
-   pooled objects covering all 288 entities in the level.
+   result: reaches the win screen in ~70s of game time with no deaths, ~145 crystals, and 37
+   pooled objects covering all 290 objects in the level.
 
 The autoplay bot is a traversal check, not a fun check — it says the level is completable
 and nothing crashes, not that the timing feels good.
@@ -360,6 +367,8 @@ src/systems/parallax.js     three-layer background
 src/systems/audio.js        Web Audio SFX + mobile unlock
 src/systems/haptics.js      Capacitor Haptics
 src/systems/lifecycle.js    gesture locking, safe areas, auto-pause
+src/physics/jump-model.js   the jump arc, shared by the game and the validator
+src/physics/creature-motion.js  bat and spider motion, shared the same way
 src/gfx/textures.js         procedural art (documented swap points)
 src/level/level1.js         the hand-authored level
 tools/                      asset builders, level validator, test harnesses

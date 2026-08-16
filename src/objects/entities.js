@@ -1,14 +1,6 @@
 import Phaser from 'phaser';
-import {
-  COLORS,
-  RUN_SPEED,
-  GAME_WIDTH,
-  CAMERA_LEAD,
-  ACTIVATION_MARGIN,
-  SPIDER_WINDUP,
-  SPIDER_DROP,
-  SPIDER_HANG
-} from '../config/tuning.js';
+import { COLORS, RUN_SPEED, GAME_WIDTH, CAMERA_LEAD, ACTIVATION_MARGIN } from '../config/tuning.js';
+import { batY, batTelegraph, spiderY, spiderWindup, spiderSpread } from '../physics/creature-motion.js';
 import { KEYS } from '../gfx/textures.js';
 
 /**
@@ -25,8 +17,6 @@ import { KEYS } from '../gfx/textures.js';
  * the beat you get on attempt 30, whether you ran the whole way in or respawned at a
  * checkpoint a few tiles short of it.
  */
-
-const easeInOut = (t) => 0.5 - 0.5 * Math.cos(Math.PI * Phaser.Math.Clamp(t, 0, 1));
 
 /**
  * How far ahead of the runner a creature normally wakes: entities activate at the camera's
@@ -157,9 +147,6 @@ export class Stalactite extends Entity {
  * cue survives colour-blindness.
  */
 export class Bat extends Entity {
-  static HOLD = 0.18; // fraction of the period spent parked at each extreme
-  static MOVE = 0.32;
-
   constructor(scene) {
     super(scene, KEYS.batOpen);
     this.setDepth(14);
@@ -195,25 +182,7 @@ export class Bat extends Entity {
    */
   motionAt(t) {
     const { period = 2500, yTop, yBottom } = this.def;
-    const p = (t % period) / period;
-    const { HOLD, MOVE } = Bat;
-
-    if (p < HOLD) {
-      const telegraph = Phaser.Math.Clamp((p / HOLD - 0.5) * 2, 0, 1);
-      return { y: yTop, telegraph, lean: telegraph }; // about to drop
-    }
-    if (p < HOLD + MOVE) {
-      return { y: Phaser.Math.Linear(yTop, yBottom, easeInOut((p - HOLD) / MOVE)), telegraph: 0, lean: 1 };
-    }
-    if (p < HOLD * 2 + MOVE) {
-      const telegraph = Phaser.Math.Clamp(((p - HOLD - MOVE) / HOLD - 0.5) * 2, 0, 1);
-      return { y: yBottom, telegraph, lean: -telegraph }; // about to climb
-    }
-    return {
-      y: Phaser.Math.Linear(yBottom, yTop, easeInOut((p - HOLD * 2 - MOVE) / MOVE)),
-      telegraph: 0,
-      lean: -1
-    };
+    return { y: batY(t, period, yTop, yBottom), ...batTelegraph(t, period) };
   }
 
   /** Where this bat will be in `inMs` milliseconds. */
@@ -252,10 +221,6 @@ export class Bat extends Entity {
  * thread goes taut — before the fast drop. Then it hangs, then reels back up slowly.
  */
 export class Spider extends Entity {
-  static WINDUP = SPIDER_WINDUP;
-  static DROP = SPIDER_DROP;
-  static HANG = SPIDER_HANG;
-
   constructor(scene) {
     super(scene, KEYS.spiderTuck);
     this.setDepth(14);
@@ -287,23 +252,11 @@ export class Spider extends Entity {
   /** Pure motion function — see Bat.motionAt. */
   motionAt(t) {
     const { period = 2500, drop } = this.def;
-    const p = (t % period) / period;
-    const { WINDUP, DROP, HANG } = Spider;
-    const anchor = this.anchorY;
-
-    if (p < WINDUP) {
-      const windup = Phaser.Math.Clamp((p / WINDUP - 0.35) / 0.65, 0, 1);
-      return { y: anchor, windup, spread: windup > 0.15 };
-    }
-    if (p < WINDUP + DROP) {
-      const t2 = (p - WINDUP) / DROP;
-      return { y: Phaser.Math.Linear(anchor, drop, t2 * t2), windup: 0, spread: true }; // accelerating fall
-    }
-    if (p < WINDUP + DROP + HANG) {
-      return { y: drop, windup: 0, spread: true };
-    }
-    const t3 = (p - WINDUP - DROP - HANG) / (1 - WINDUP - DROP - HANG);
-    return { y: Phaser.Math.Linear(drop, anchor, easeInOut(t3)), windup: 0, spread: false };
+    return {
+      y: spiderY(t, period, this.anchorY, drop),
+      windup: spiderWindup(t, period),
+      spread: spiderSpread(t, period)
+    };
   }
 
   /** Where this spider will be in `inMs` milliseconds. */

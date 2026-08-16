@@ -3,6 +3,7 @@
 // floating in the air" mistakes that are otherwise only findable by playing.
 import { PLATFORMS, ENTITIES, SEGMENTS, MAP_W, MAP_H, TILE, FLOOR_TOP, CEIL_BOTTOM } from '../src/level/level1.js';
 import { reachForRise, apexHeight, arcPoints, holdForGap } from '../src/physics/jump-model.js';
+import { spiderY, batY } from '../src/physics/creature-motion.js';
 import {
   RUN_SPEED,
   PLAYER_BODY_W,
@@ -301,21 +302,6 @@ const IDLE_CLEARANCE_PX = 110;
  * the player to a completely different point in the creature's cycle than the run-up did,
  * and a spider could be safely overhead one way and lying in the lane the other.
  */
-/** The spider's centre y at cycle time `t` — the same motion the entity runs at play time. */
-const spiderYAt = (t, e, restY) => {
-  const drop = e.drop * TILE;
-  const p = (((t % e.period) + e.period) / e.period) % 1;
-  if (p < SPIDER_WINDUP) return restY;
-  if (p < SPIDER_WINDUP + SPIDER_DROP) {
-    const k = (p - SPIDER_WINDUP) / SPIDER_DROP;
-    return restY + (drop - restY) * k * k;
-  }
-  if (p < SPIDER_WINDUP + SPIDER_DROP + SPIDER_HANG) return drop;
-  const k = (p - SPIDER_WINDUP - SPIDER_DROP - SPIDER_HANG) / (1 - SPIDER_WINDUP - SPIDER_DROP - SPIDER_HANG);
-  const eased = k < 0.5 ? 2 * k * k : -1 + (4 - 2 * k) * k;
-  return drop + (restY - drop) * eased;
-};
-
 const ARRIVAL_OFFSET_MS = WAKE_LEAD_MS;
 
 for (const e of ENTITIES) {
@@ -339,7 +325,7 @@ for (const e of ENTITIES) {
     let highest = Infinity;
     let lowestBelly = -Infinity;
     for (let dt = -CROSS_MS / 2; dt <= CROSS_MS / 2; dt += 2) {
-      const y = spiderYAt(t0 + dt, e, restY);
+      const y = spiderY(t0 + dt, e.period, restY, e.drop * TILE);
       const top = y - CREATURE_BODY_H / 2;
       const bottom = y + CREATURE_BODY_H / 2;
       if (bottom > playerTop && top < surface) blocking++;
@@ -402,26 +388,11 @@ notes.push(`shortest possible hop: ${MIN_HOP_PX.toFixed(0)}px (${(MIN_HOP_PX / T
 // of an ambush, but "you always run underneath it" is the failure that actually happened:
 // eleven of fifteen asked nothing of the player, and several of those cleared their head by
 // almost nothing — one by a single pixel — which is not a near miss anyone designed.
-const BAT_HOLD = 0.18;
-const BAT_MOVE = 0.32;
 const BAT_BODY_W = 26;
 const BAT_CROSS_MS = ((PLAYER_BODY_W + BAT_BODY_W) / RUN_SPEED) * 1000;
 
 /** Minimum daylight for a bat the player is meant to run under. Below this it is a graze. */
 const BAT_MIN_CLEARANCE_PX = 20;
-
-const easeInOut = (t) => 0.5 - 0.5 * Math.cos(Math.PI * Math.min(Math.max(t, 0), 1));
-
-const batYAt = (t, e) => {
-  const per = e.period;
-  const top = e.yTop * TILE;
-  const bot = e.yBottom * TILE;
-  const p = ((((t % per) + per) % per) / per);
-  if (p < BAT_HOLD) return top;
-  if (p < BAT_HOLD + BAT_MOVE) return top + (bot - top) * easeInOut((p - BAT_HOLD) / BAT_MOVE);
-  if (p < BAT_HOLD * 2 + BAT_MOVE) return bot;
-  return bot + (top - bot) * easeInOut((p - BAT_HOLD * 2 - BAT_MOVE) / BAT_MOVE);
-};
 
 for (const e of ENTITIES) {
   if (e.type !== 'bat') continue;
@@ -435,7 +406,7 @@ for (const e of ENTITIES) {
   let highest = Infinity;
   let lowestBelly = -Infinity;
   for (let dt = -BAT_CROSS_MS / 2; dt <= BAT_CROSS_MS / 2; dt += 2) {
-    const y = batYAt(t0 + dt, e);
+    const y = batY(t0 + dt, e.period, e.yTop * TILE, e.yBottom * TILE);
     const top = y - CREATURE_BODY_H / 2;
     const bottom = y + CREATURE_BODY_H / 2;
     if (bottom > playerTop && top < surface) blocking++;
