@@ -9,6 +9,38 @@ import { fullscreenState } from '../systems/fullscreen.js';
 const BTN = 56;
 
 /**
+ * Touch targets are sized separately from the art, and larger than it.
+ *
+ * These buttons used to respond only across the top-left quarter of what they draw, which
+ * is what "hit or miss" meant when it was reported. The hit rectangles were written as
+ * `(-w/2, -h/2, w, h)` — centred, the way the child graphics are — but a Game Object's hit
+ * area is in *local* space measured from its top-left corner: Phaser's own default is
+ * `Rectangle(0, 0, width, height)`. Writing it centred therefore displaced the whole area
+ * half a button up and to the left, so only the overlap with the artwork responded. Taps on
+ * the lower-right of the button hit nothing, and taps on empty space above and to the left
+ * of it worked. Hence: set the size, and let Phaser build the rectangle. Nothing here
+ * should hand-write one again.
+ *
+ * Size is the second half of it. The design space is 960x540 and FIT scales it down to
+ * whatever the phone gives us, so a button drawn at 56 units is not 56 pixels in the hand —
+ * on a 852x393 landscape phone it is 41px installed to the home screen and 36px in Safari,
+ * where the toolbar eats the height. Apple's minimum is 44pt and both were under it.
+ * Drawing them bigger would cost screen the game needs, so only the target grows: 88 units
+ * is ~64px installed and ~56px in Safari.
+ */
+const BTN_HIT = 88;
+
+/**
+ * The pause menu's two buttons, which are a different problem: they sit one above the
+ * other, so their hit areas cannot both grow without meeting in the middle — and the lower
+ * one restarts the level, which is not something to hand to an ambiguous tap. The gap
+ * between them opens up to make room, and the hit height stays 4 units short of it so
+ * there is always a dead band rather than an overlap.
+ */
+const MENU_GAP = 88;
+const MENU_HIT_H = MENU_GAP - 4;
+
+/**
  * Overlay scene: score, shield state, pause button, toasts and the pause menu.
  *
  * It runs in parallel with (and on top of) the Game scene, so pausing the game leaves the
@@ -102,6 +134,36 @@ export class HudScene extends Phaser.Scene {
       .setDepth(61);
 
     this.perf = { frames: [], worst: 0, clamped: 0, since: 0 };
+
+    /**
+     * Where a tap actually landed, in game coordinates, drawn where it landed.
+     *
+     * This answers the one question that cannot be answered by reading the code: when a
+     * button does not respond, is the touch arriving somewhere other than under the finger,
+     * or is it arriving in the right place and simply missing a target that is too small?
+     * The outline shows the pause button's real hit area and the dot shows the tap. Finger
+     * on the dot means the transform is honest and size is the whole story; dot adrift of
+     * the finger means the pointer transform is stale, which is a different bug entirely.
+     */
+    this.hitOutline = this.add.graphics().setDepth(62);
+    this.tapDot = this.add.circle(0, 0, 9, 0xff4d6d, 0.95).setDepth(63).setVisible(false);
+    this.tapRing = this.add.circle(0, 0, 24).setStrokeStyle(2, 0xff4d6d, 0.9).setDepth(63).setVisible(false);
+    this.lastTap = null;
+
+    this.input.on('pointerdown', (p) => {
+      this.lastTap = { x: Math.round(p.x), y: Math.round(p.y) };
+      this.tapDot.setPosition(p.x, p.y).setVisible(true);
+      this.tapRing.setPosition(p.x, p.y).setVisible(true);
+    });
+  }
+
+  /** Debug only: outline the pause button's hit area, so it can be compared to a tap. */
+  #drawHitOutline() {
+    if (!this.hitOutline) return;
+    const b = this.pauseBtn;
+    this.hitOutline.clear();
+    this.hitOutline.lineStyle(2, 0xff4d6d, 0.8);
+    this.hitOutline.strokeRect(b.x - BTN_HIT / 2, b.y - BTN_HIT / 2, BTN_HIT, BTN_HIT);
   }
 
   #buildPauseButton() {
@@ -114,8 +176,11 @@ export class HudScene extends Phaser.Scene {
     const barL = this.add.rectangle(-7, 0, 6, 22, COLORS.ice, 0.92);
     const barR = this.add.rectangle(7, 0, 6, 22, COLORS.ice, 0.92);
     this.pauseBtn.add([bg, barL, barR]);
-    this.pauseBtn.setSize(BTN, BTN);
-    this.pauseBtn.setInteractive(new Phaser.Geom.Rectangle(-BTN / 2, -BTN / 2, BTN, BTN), Phaser.Geom.Rectangle.Contains);
+    // Size then setInteractive(): Phaser derives a correctly aligned hit area from the
+    // size. The container's own size is the *target*, not the artwork, which is drawn at
+    // BTN by the children above.
+    this.pauseBtn.setSize(BTN_HIT, BTN_HIT);
+    this.pauseBtn.setInteractive();
     this.pauseBtn.on('pointerdown', () => this.togglePause());
   }
 
@@ -144,7 +209,7 @@ export class HudScene extends Phaser.Scene {
       .setOrigin(0.5);
 
     this.resumeBtn = this.#menuButton(GAME_WIDTH / 2, GAME_HEIGHT * 0.55, 'RESUME', () => this.togglePause());
-    this.restartBtn = this.#menuButton(GAME_WIDTH / 2, GAME_HEIGHT * 0.55 + 74, 'RESTART LEVEL', () =>
+    this.restartBtn = this.#menuButton(GAME_WIDTH / 2, GAME_HEIGHT * 0.55 + MENU_GAP, 'RESTART LEVEL', () =>
       this.#restart()
     );
 
@@ -164,8 +229,10 @@ export class HudScene extends Phaser.Scene {
       .text(0, 0, label, { fontFamily: 'sans-serif', fontSize: '20px', fontStyle: 'bold', color: '#cfe9ff' })
       .setOrigin(0.5);
     container.add([bg, text]);
-    container.setSize(w, h);
-    container.setInteractive(new Phaser.Geom.Rectangle(-w / 2, -h / 2, w, h), Phaser.Geom.Rectangle.Contains);
+    // Taller than it draws, and derived from the size rather than hand-written, for the
+    // same two reasons as the pause button — see BTN_HIT.
+    container.setSize(w, MENU_HIT_H);
+    container.setInteractive();
     container.on('pointerdown', onClick);
     return container;
   }
@@ -182,17 +249,17 @@ export class HudScene extends Phaser.Scene {
     if (this.debugText) this.debugText.setPosition(left, GAME_HEIGHT - this.safe.bottom);
     // Below the score and shield icons, clear of the pause button on the right.
     if (this.perfText) this.perfText.setPosition(left, top + 78);
+    this.#drawHitOutline();
     this.#publishUiRects();
   }
 
   /** Let the Game scene know where the UI is, so those taps don't also fire a jump. */
   #publishUiRects() {
     const b = this.pauseBtn;
-    // A little larger than the button itself: a fingertip that grazes the edge of the
-    // pause button should not be read as a jump.
-    const pad = 10;
+    // Exactly the button's hit area. These two must agree: a tap the pause button accepts
+    // but this rect misses would pause the game *and* spend a jump on the way.
     this.registry.set('uiRects', [
-      { x: b.x - BTN / 2 - pad, y: b.y - BTN / 2 - pad, width: BTN + pad * 2, height: BTN + pad * 2 }
+      { x: b.x - BTN_HIT / 2, y: b.y - BTN_HIT / 2, width: BTN_HIT, height: BTN_HIT }
     ]);
   }
 
@@ -267,6 +334,18 @@ export class HudScene extends Phaser.Scene {
     // find out without devtools, which is how the last round of this got diagnosed.
     const fs = fullscreenState;
 
+    // Touch diagnostics. `tap` is where the last touch landed in game coordinates and
+    // `pause` is where the pause button's hit area is; if a tap on the button reads OUT,
+    // compare the two numbers to see which way it is off. `canvas` is the on-screen size
+    // of the 960x540 design space — the scale factor that decides whether a 56-unit button
+    // clears Apple's 44px minimum.
+    const t = this.lastTap;
+    const b = this.pauseBtn;
+    const inBtn =
+      t && Math.abs(t.x - b.x) <= BTN_HIT / 2 && Math.abs(t.y - b.y) <= BTN_HIT / 2;
+    const r = this.game.canvas.getBoundingClientRect();
+    const px = (r.width / GAME_WIDTH) * BTN;
+
     this.perfText.setColor(fps >= 50 ? '#7dffb0' : fps >= 30 ? '#ffd479' : '#ff8080');
     this.perfText.setText(
       `fps ${fps}   frame ${median.toFixed(1)}ms   worst ${p.worst.toFixed(0)}ms\n` +
@@ -274,7 +353,11 @@ export class HudScene extends Phaser.Scene {
         `${slowMo ? '  << SLOW-MO' : ''}\n` +
         `${renderer}  objects ${objects}  creatures ${active}  clamped ${p.clamped}\n` +
         `fs ${fs.available ? 'yes' : 'NO'}` +
-        `${fs.active ? ' (on)' : ''}${fs.standalone ? ' installed' : ''}  ${fs.reason}`
+        `${fs.active ? ' (on)' : ''}${fs.standalone ? ' installed' : ''}  ${fs.reason}\n` +
+        `tap ${t ? `${t.x},${t.y}` : '-'}  pause ${Math.round(b.x)},${Math.round(b.y)}` +
+        `  ${t ? (inBtn ? 'IN' : 'OUT') : ''}\n` +
+        `canvas ${Math.round(r.width)}x${Math.round(r.height)} @${Math.round(r.left)},${Math.round(r.top)}` +
+        `  btn ${px.toFixed(0)}px`
     );
     p.worst = 0;
   }
