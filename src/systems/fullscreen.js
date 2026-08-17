@@ -8,22 +8,31 @@
  * it is a *scroll* response. Every other site on the phone claws that strip of screen back
  * after a swipe; this one structurally cannot. On a 852x393 landscape phone the toolbar
  * costs roughly 50px of a 393px-tall viewport, and because the canvas is height-constrained
- * in FIT mode that is a straight ~15% off the scale of everything drawn. Full screen is the
- * only way to get it back inside the browser.
+ * in FIT mode that is a straight ~15% off the scale of everything drawn.
  *
- * The button is deliberately optimistic. Element full screen on iPhone was unsupported for
- * years — only `<video>` could do it — and shipped in Safari 17.2/17.4, so whether it works
- * depends on the phone in the player's hand rather than on anything knowable here. So:
- * offer the button when the browser claims support, and if the request then fails anyway,
- * fall back to telling iOS players about Add to Home Screen, which reaches the same place
- * via the manifest (`display: fullscreen`, `orientation: landscape`).
+ * The button is always offered, and that is the whole design rule here, learned the hard
+ * way. The first version hid itself in two situations — when the browser reported no
+ * Fullscreen API, and during a run — and both were exactly when someone would go looking
+ * for it. A control that vanishes when you reach for it reads as a broken build, not as a
+ * considered fallback. So the button is always on screen; what it *does* depends on what
+ * the browser can actually do:
+ *
+ *   - Fullscreen API present  -> toggles full screen.
+ *   - absent, or the request is refused -> shows how to get there via Add to Home Screen,
+ *     which reaches the same place through the manifest (`display: fullscreen`,
+ *     `orientation: landscape`). This is the iPhone Safari case; element full screen was
+ *     unsupported there for years and only shipped in Safari 17.2/17.4, so whether it works
+ *     depends on the phone in the player's hand rather than on anything knowable here.
+ *
+ * The one case where it is hidden is when there is no browser chrome left to reclaim —
+ * launched from the home screen, the button would be offering something already true.
  */
 import Phaser from 'phaser';
 
-/** Remembers a dismissed hint, so it is offered once and never nags. */
+/** Remembers a dismissed hint, so it is *offered* once and never nags. */
 const HINT_KEY = 'caverunner.a2hs-hint-dismissed';
 
-/** Already running without browser chrome — installed to the home screen, or full screen. */
+/** Already running without browser chrome — installed to the home screen. */
 const isChromeless = () =>
   window.navigator.standalone === true ||
   window.matchMedia('(display-mode: fullscreen)').matches ||
@@ -51,6 +60,17 @@ const store = (key, value) => {
 };
 
 /**
+ * Reported by the `?perf=1` readout. The player has no devtools, so the only way to learn
+ * what their phone actually supports is to have the game say so on screen.
+ */
+export const fullscreenState = {
+  available: false,
+  active: false,
+  standalone: false,
+  reason: 'booting'
+};
+
+/**
  * @param {Phaser.Game} game
  * @param {() => void} refit - re-runs the viewport measurement (from `trackVisualViewport`)
  */
@@ -60,33 +80,41 @@ export function installFullscreenToggle(game, refit = () => {}) {
   const hintDismiss = document.getElementById('a2hs-dismiss');
   if (!btn) return;
 
-  // Phaser's input listens on `window` as well as on the canvas, so a tap on a DOM button
-  // sitting *above* the canvas still reaches the game and reads as a jump. Stopping the
-  // event at the button keeps it away from that window listener — and, unlike
-  // preventDefault, leaves the `click` that follows intact. The same guard keeps taps away
-  // from the double-tap-zoom swallower in `lockGestures`, which would otherwise cancel the
-  // click outright.
+  // Phaser's input listens on `window` as well as on the canvas, so a tap on a DOM control
+  // sitting above the canvas still reaches the game and reads as a jump. Stopping the event
+  // at the button keeps it away from that window listener — and, unlike preventDefault, it
+  // leaves the `click` that follows intact. The same guard keeps taps away from the
+  // double-tap-zoom swallower in `lockGestures`, which would otherwise cancel the click.
   const swallow = (e) => e.stopPropagation();
   ['touchstart', 'touchend', 'touchcancel', 'pointerdown', 'pointerup', 'mousedown', 'mouseup'].forEach((ev) => {
     btn.addEventListener(ev, swallow);
     hint?.addEventListener(ev, swallow);
   });
 
-  let available = false;
+  let canFullscreen = false; // the API is there and has not refused
+  let offerButton = false; // there is browser chrome worth reclaiming
   let inPlay = false;
 
   const sync = () => {
     const active = game.scale.isFullscreen;
     btn.classList.toggle('is-fullscreen', active);
-    btn.setAttribute('aria-label', active ? 'Exit full screen' : 'Enter full screen');
-    // Hidden during a run: in landscape the button sits where a thumb rests, and trading a
-    // jump for an accidental full-screen toggle is the one way this feature could cost a
-    // life. The pause menu and the start screen are when anyone actually wants it.
-    btn.hidden = !available || inPlay;
+    // Dimmed rather than hidden during a run: still reachable, no longer competing with
+    // the game for attention.
+    btn.classList.toggle('is-playing', inPlay);
+    btn.setAttribute(
+      'aria-label',
+      active ? 'Exit full screen' : canFullscreen ? 'Enter full screen' : 'How to play full screen'
+    );
+    btn.hidden = !offerButton;
+
+    fullscreenState.available = canFullscreen;
+    fullscreenState.active = active;
+    fullscreenState.standalone = isChromeless();
   };
 
-  const showHint = () => {
-    if (!hint || !isIOS() || isChromeless() || stored(HINT_KEY)) return;
+  /** @param {boolean} auto - true when offered unprompted, which the player can silence */
+  const showHint = (auto) => {
+    if (!hint || (auto && stored(HINT_KEY))) return;
     hint.hidden = false;
   };
 
@@ -96,6 +124,12 @@ export function installFullscreenToggle(game, refit = () => {}) {
   });
 
   btn.addEventListener('click', () => {
+    if (!canFullscreen) {
+      // No API, or it refused earlier. Explain the route that does work — and let the
+      // button close the explanation again, so it is a toggle either way.
+      if (hint) hint.hidden = !hint.hidden;
+      return;
+    }
     if (game.scale.isFullscreen) game.scale.stopFullscreen();
     else game.scale.startFullscreen();
   });
@@ -104,23 +138,23 @@ export function installFullscreenToggle(game, refit = () => {}) {
     // Full screen is the one context where a landscape lock is actually granted on Android;
     // the attempt at boot is always refused. Still a no-op on iOS, which has no lock API.
     if (screen.orientation?.lock) screen.orientation.lock('landscape').catch(() => {});
+    if (hint) hint.hidden = true;
     sync();
     refit();
   });
 
-  const left = () => {
+  game.scale.on(Phaser.Scale.Events.LEAVE_FULLSCREEN, () => {
     sync();
     refit();
-  };
-  game.scale.on(Phaser.Scale.Events.LEAVE_FULLSCREEN, left);
+  });
 
-  // The request can be refused after the browser advertised support — iPhone Safari is the
-  // case this is here for. Retire the button rather than leave a dead control on screen,
-  // and point iOS players at the route that does work.
+  // The request can be refused after the browser advertised support. Stop offering a toggle
+  // that does not toggle, but keep the button — it now explains the route that works.
   const failed = () => {
-    available = false;
+    canFullscreen = false;
+    fullscreenState.reason = 'request refused';
     sync();
-    showHint();
+    showHint(false);
   };
   game.scale.on(Phaser.Scale.Events.FULLSCREEN_FAILED, failed);
   game.scale.on(Phaser.Scale.Events.FULLSCREEN_UNSUPPORTED, failed);
@@ -129,9 +163,17 @@ export function installFullscreenToggle(game, refit = () => {}) {
   // registered until the scene manager drains its queue on the same event — so everything
   // that inspects either has to wait for `ready`.
   game.events.once(Phaser.Core.Events.READY, () => {
-    available = game.scale.fullscreen.available && !isChromeless();
-    if (!available) showHint();
+    canFullscreen = game.scale.fullscreen.available;
+    offerButton = !isChromeless();
+    fullscreenState.reason = !offerButton
+      ? 'already chromeless'
+      : canFullscreen
+        ? 'api available'
+        : 'no element fullscreen api';
     sync();
+
+    // Offered unprompted only where it is the *only* route to a chrome-free game.
+    if (offerButton && !canFullscreen && isIOS()) showHint(true);
 
     const scene = game.scene.getScene('Game');
     if (!scene) return;

@@ -4,6 +4,7 @@ import { KEYS } from '../gfx/textures.js';
 import { getSafeArea } from '../systems/lifecycle.js';
 import { audio } from '../systems/audio.js';
 import { support as hapticSupport, lastEvent as lastHaptic } from '../systems/haptics.js';
+import { fullscreenState } from '../systems/fullscreen.js';
 
 const BTN = 56;
 
@@ -261,12 +262,19 @@ export class HudScene extends Phaser.Scene {
       ? [...game.director.pools.values()].reduce((n, pool) => n + pool.active.length, 0)
       : 0;
 
+    // Whether this device can do full screen is not knowable from a build machine — it is
+    // a property of the phone in the player's hand. Reporting it here is the only way to
+    // find out without devtools, which is how the last round of this got diagnosed.
+    const fs = fullscreenState;
+
     this.perfText.setColor(fps >= 50 ? '#7dffb0' : fps >= 30 ? '#ffd479' : '#ff8080');
     this.perfText.setText(
       `fps ${fps}   frame ${median.toFixed(1)}ms   worst ${p.worst.toFixed(0)}ms\n` +
         `raw ${loop.rawDelta.toFixed(1)}ms  sim ${loop.delta.toFixed(1)}ms` +
         `${slowMo ? '  << SLOW-MO' : ''}\n` +
-        `${renderer}  objects ${objects}  creatures ${active}  clamped ${p.clamped}`
+        `${renderer}  objects ${objects}  creatures ${active}  clamped ${p.clamped}\n` +
+        `fs ${fs.available ? 'yes' : 'NO'}` +
+        `${fs.active ? ' (on)' : ''}${fs.standalone ? ' installed' : ''}  ${fs.reason}`
     );
     p.worst = 0;
   }

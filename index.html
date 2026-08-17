@@ -147,6 +147,12 @@
          rather than on top of the game. Hidden by JS during a run. */
       #fullscreen-btn {
         position: absolute;
+        /* Plain values first: if a browser cannot resolve env() through a custom property
+           inside calc(), the calc below is dropped as invalid and these still place the
+           button. Without the fallback that failure would strand it at its static
+           position, in the top-left corner, over the score. */
+        right: 12px;
+        bottom: 12px;
         right: calc(var(--sa-right) + 12px);
         bottom: calc(var(--sa-bottom) + 12px);
         z-index: 15;
@@ -168,6 +174,13 @@
         cursor: pointer;
         /* `manipulation` still allows the tap; `none` on the ancestors would not. */
         touch-action: manipulation;
+        transition: opacity 200ms ease;
+      }
+
+      /* During a run: still reachable — it is in the pillarbox bar, and taps on it cannot
+         reach the game — but no longer competing with the game for attention. */
+      #fullscreen-btn.is-playing {
+        opacity: 0.45;
       }
 
       /* `display: flex` above would otherwise beat the `hidden` attribute. */
@@ -208,6 +221,7 @@
       #a2hs-hint {
         position: absolute;
         left: 50%;
+        bottom: 12px;
         bottom: calc(var(--sa-bottom) + 12px);
         transform: translateX(-50%);
         z-index: 15;

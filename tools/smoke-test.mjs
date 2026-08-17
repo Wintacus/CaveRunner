@@ -92,38 +92,83 @@ if (!fsBtn) {
   await browser.close();
   process.exit(1);
 }
-if (!fsBtn.available) {
-  console.log('full-screen button: unsupported in this browser, skipped');
+const sceneKeys = () => page.evaluate(() => ({ menu: window.__game.scene.isActive('Menu'), game: window.__game.scene.isActive('Game') }));
+const before = await sceneKeys();
+await page.tap('#fullscreen-btn');
+await page.waitForTimeout(700);
+const after = await sceneKeys();
+const fsState = await page.evaluate(() => ({
+  isFullscreen: window.__game.scale.isFullscreen,
+  element: document.fullscreenElement?.id ?? null,
+  canvasStillInGame: document.querySelector('canvas').parentElement?.id === 'game'
+}));
+const leaked = before.menu && after.game;
+const problems = [];
+if (!fsBtn.insideGame) problems.push('the button is outside #game, so it vanishes in full screen');
+if (fsBtn.hidden) problems.push('the button is hidden on the menu, where it is meant to be offered');
+if (leaked) problems.push('tapping the button also reached the game as a jump and started the run');
+if (fsBtn.available && !fsState.isFullscreen) problems.push('the API is available but the tap did not enter full screen');
+if (fsState.isFullscreen && fsState.element !== 'game') problems.push(`full screen went to "${fsState.element}" rather than #game`);
+if (!fsState.canvasStillInGame) problems.push('the canvas was reparented out of #game');
+
+/**
+ * And the same button on a browser with no Fullscreen API at all — iPhone Safari, where
+ * element full screen only shipped in 17.2/17.4 and is absent on anything older.
+ *
+ * This is the bug that reached the player. The button used to hide itself whenever the API
+ * was missing, which meant it disappeared on precisely the device it was built for; the
+ * report back was "I don't see that button at all". It must now stay, and explain the route
+ * that does work. Phaser probes for the API at module-load time, so it has to be deleted
+ * before any script on the page runs.
+ */
+const bareContext = await browser.newContext({
+  viewport: { width: 844, height: 390 },
+  hasTouch: true,
+  isMobile: true,
+  userAgent:
+    'Mozilla/5.0 (iPhone; CPU iPhone OS 18_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.5 Mobile/15E148 Safari/604.1'
+});
+await bareContext.addInitScript(() => {
+  for (const p of ['requestFullscreen', 'requestFullScreen', 'webkitRequestFullscreen', 'webkitRequestFullScreen',
+    'msRequestFullscreen', 'msRequestFullScreen', 'mozRequestFullScreen', 'mozRequestFullscreen']) {
+    try { Object.defineProperty(Element.prototype, p, { value: undefined, configurable: true }); } catch { /* not deletable */ }
+  }
+});
+const barePage = await bareContext.newPage();
+await barePage.goto(url, { waitUntil: 'load' });
+await barePage.waitForTimeout(3000);
+const bare = await barePage.evaluate(() => {
+  const b = document.getElementById('fullscreen-btn');
+  const r = b.getBoundingClientRect();
+  return {
+    reportedAvailable: window.__game.scale.fullscreen.available,
+    buttonVisible: !b.hidden && r.width > 0 && r.height > 0,
+    // Bottom-right, not stranded in the corner by a safe-area calc the browser could not parse.
+    inLowerRight: r.x > window.innerWidth / 2 && r.y > window.innerHeight / 2
+  };
+});
+if (bare.reportedAvailable) {
+  problems.push('the no-API simulation failed to remove the Fullscreen API, so the fallback went untested');
 } else {
-  const sceneKeys = () => page.evaluate(() => ({ menu: window.__game.scene.isActive('Menu'), game: window.__game.scene.isActive('Game') }));
-  const before = await sceneKeys();
+  if (!bare.buttonVisible) problems.push('with no Fullscreen API the button hides itself — this is the bug that shipped');
+  if (!bare.inLowerRight) problems.push('with no Fullscreen API the button is not in the lower-right corner');
+}
+await bareContext.close();
+
+console.log(
+  `full-screen button: entered=${fsState.isFullscreen}, input leak=${leaked ? 'YES' : 'no'}, ` +
+    `visible without API=${bare.buttonVisible}, problems=${problems.length}`
+);
+if (problems.length) {
+  console.error('\nfull-screen button check failed:');
+  problems.forEach((p) => console.error(`  ${p}`));
+  await browser.close();
+  process.exit(1);
+}
+// Back out, so the rest of the run measures the ordinary windowed layout.
+if (fsState.isFullscreen) {
   await page.tap('#fullscreen-btn');
   await page.waitForTimeout(700);
-  const after = await sceneKeys();
-  const fsState = await page.evaluate(() => ({
-    isFullscreen: window.__game.scale.isFullscreen,
-    element: document.fullscreenElement?.id ?? null,
-    canvasStillInGame: document.querySelector('canvas').parentElement?.id === 'game'
-  }));
-  const leaked = before.menu && after.game;
-  const problems = [];
-  if (!fsBtn.insideGame) problems.push('the button is outside #game, so it vanishes in full screen');
-  if (fsBtn.hidden) problems.push('the button is hidden on the menu, where it is meant to be offered');
-  if (leaked) problems.push('tapping the button also reached the game as a jump and started the run');
-  if (fsState.isFullscreen && fsState.element !== 'game') problems.push(`full screen went to "${fsState.element}" rather than #game`);
-  if (!fsState.canvasStillInGame) problems.push('the canvas was reparented out of #game');
-  console.log(`full-screen button: entered=${fsState.isFullscreen}, input leak=${leaked ? 'YES' : 'no'}, problems=${problems.length}`);
-  if (problems.length) {
-    console.error('\nfull-screen button check failed:');
-    problems.forEach((p) => console.error(`  ${p}`));
-    await browser.close();
-    process.exit(1);
-  }
-  // Back out, so the rest of the run measures the ordinary windowed layout.
-  if (fsState.isFullscreen) {
-    await page.tap('#fullscreen-btn');
-    await page.waitForTimeout(700);
-  }
 }
 
 // Start the run.
