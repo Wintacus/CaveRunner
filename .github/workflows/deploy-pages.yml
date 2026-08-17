@@ -1,10 +1,24 @@
 name: Deploy to GitHub Pages
 
+# Publishes two builds of the game from one workflow run:
+#
+#   /          <- the `release` branch. What anyone handed the link plays. It only moves
+#                 when someone deliberately moves `release`, so work in progress never
+#                 reaches them.
+#   /preview/  <- the working branch. Where the game gets tested on a real phone, which is
+#                 the only way it can be tested at all — there is no local dev environment.
+#
+# It has to be one workflow: Pages serves a single artifact per site, so two workflows
+# publishing separately would each overwrite the other's half.
+#
+# Deploys run from the default branch only (the `github-pages` environment rejects other
+# refs), so pushing the working branch does not publish by itself — trigger this manually
+# from the Actions tab, or push anything to main.
+
 on:
   push:
     branches:
       - main
-      - claude/game-build-spec-qi770o
   workflow_dispatch:
 
 permissions:
@@ -17,32 +31,65 @@ concurrency:
   group: pages
   cancel-in-progress: false
 
+env:
+  RELEASE_REF: release
+  PREVIEW_REF: claude/game-build-spec-qi770o
+
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - name: Check out the released build
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.RELEASE_REF }}
+          path: release
+
+      - name: Check out the working branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.PREVIEW_REF }}
+          path: preview
 
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: npm
 
-      - name: Install
-        run: npm ci
+      # The released build is the one strangers see, so a failure here should fail the
+      # whole run rather than publish something broken.
+      - name: Build the release
+        working-directory: release
+        run: npm ci && npm run validate && npm run build
         env:
           # playwright is a dev dependency used only by the local test harnesses;
           # no need to pull ~200MB of browsers into the deploy job.
           PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: 1
-
-      - name: Validate the level
-        run: npm run validate
-
-      - name: Build
-        run: npm run build
-        env:
           # Project Pages serve from https://<owner>.github.io/<repo>/
           DEPLOY_BASE: /${{ github.event.repository.name }}/
+
+      # The preview is work in progress and is allowed to be broken. If it fails to build
+      # or fails validation, the run carries on and publishes the release alone — a
+      # half-finished level must never be able to take the public URL down with it.
+      - name: Build the preview
+        id: preview
+        continue-on-error: true
+        working-directory: preview
+        run: npm ci && npm run validate && npm run build
+        env:
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: 1
+          DEPLOY_BASE: /${{ github.event.repository.name }}/preview/
+
+      - name: Assemble the site
+        run: |
+          mkdir -p site
+          cp -r release/dist/. site/
+          if [ "${{ steps.preview.outcome }}" = "success" ]; then
+            mkdir -p site/preview
+            cp -r preview/dist/. site/preview/
+            echo "published: release at / and preview at /preview/"
+          else
+            echo "::warning::the preview build failed, publishing the release alone"
+          fi
 
       - name: Configure Pages
         uses: actions/configure-pages@v5
@@ -53,7 +100,7 @@ jobs:
 
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: dist
+          path: site
 
   deploy:
     needs: build
