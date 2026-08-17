@@ -67,6 +67,65 @@ const holdAt = async (gx, gy, ms) => {
 await page.waitForTimeout(2500); // boot -> preload -> menu
 await page.screenshot({ path: path.join(shotDir, '01-menu.png') });
 
+/**
+ * The full-screen button must not be able to cost the player anything.
+ *
+ * Two ways it could, both found by building it. Phaser's input listens on `window` as well
+ * as on the canvas, so a tap on a DOM control sitting over the game reaches the game too
+ * and reads as a jump unless the event is stopped at the button. And a full-screen element
+ * is promoted to the browser's top layer, where *only it and its descendants* are painted
+ * and hit-tested — so a button that is a sibling of `#game` rather than a child of it is
+ * not merely behind the game while full screen, it is unreachable, which strands the
+ * player with no way back out.
+ */
+const fsBtn = await page.evaluate(() => {
+  const btn = document.getElementById('fullscreen-btn');
+  if (!btn) return null;
+  return {
+    insideGame: document.getElementById('game')?.contains(btn) === true,
+    available: window.__game.scale.fullscreen.available,
+    hidden: btn.hidden
+  };
+});
+if (!fsBtn) {
+  console.error('\nfull-screen button check failed: #fullscreen-btn is missing');
+  await browser.close();
+  process.exit(1);
+}
+if (!fsBtn.available) {
+  console.log('full-screen button: unsupported in this browser, skipped');
+} else {
+  const sceneKeys = () => page.evaluate(() => ({ menu: window.__game.scene.isActive('Menu'), game: window.__game.scene.isActive('Game') }));
+  const before = await sceneKeys();
+  await page.tap('#fullscreen-btn');
+  await page.waitForTimeout(700);
+  const after = await sceneKeys();
+  const fsState = await page.evaluate(() => ({
+    isFullscreen: window.__game.scale.isFullscreen,
+    element: document.fullscreenElement?.id ?? null,
+    canvasStillInGame: document.querySelector('canvas').parentElement?.id === 'game'
+  }));
+  const leaked = before.menu && after.game;
+  const problems = [];
+  if (!fsBtn.insideGame) problems.push('the button is outside #game, so it vanishes in full screen');
+  if (fsBtn.hidden) problems.push('the button is hidden on the menu, where it is meant to be offered');
+  if (leaked) problems.push('tapping the button also reached the game as a jump and started the run');
+  if (fsState.isFullscreen && fsState.element !== 'game') problems.push(`full screen went to "${fsState.element}" rather than #game`);
+  if (!fsState.canvasStillInGame) problems.push('the canvas was reparented out of #game');
+  console.log(`full-screen button: entered=${fsState.isFullscreen}, input leak=${leaked ? 'YES' : 'no'}, problems=${problems.length}`);
+  if (problems.length) {
+    console.error('\nfull-screen button check failed:');
+    problems.forEach((p) => console.error(`  ${p}`));
+    await browser.close();
+    process.exit(1);
+  }
+  // Back out, so the rest of the run measures the ordinary windowed layout.
+  if (fsState.isFullscreen) {
+    await page.tap('#fullscreen-btn');
+    await page.waitForTimeout(700);
+  }
+}
+
 // Start the run.
 await tap(480, 270);
 await page.waitForTimeout(1200);

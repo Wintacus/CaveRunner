@@ -92,9 +92,10 @@
         padding-left: env(safe-area-inset-left, 0px);
       }
 
-      /* Landscape-only: ask the player to rotate when the device is portrait. */
+      /* Landscape-only: ask the player to rotate when the device is portrait. Inside
+         #game so it still appears when the game is full screen. */
       #rotate-notice {
-        position: fixed;
+        position: absolute;
         inset: 0;
         display: none;
         flex-direction: column;
@@ -141,6 +142,111 @@
         }
       }
 
+      /* Full-screen toggle. Bottom-right, where a video player puts it — which is the
+         mental model, and in landscape it lands in the pillarbox bar beside the canvas
+         rather than on top of the game. Hidden by JS during a run. */
+      #fullscreen-btn {
+        position: absolute;
+        right: calc(var(--sa-right) + 12px);
+        bottom: calc(var(--sa-bottom) + 12px);
+        z-index: 15;
+
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        /* 44px is the smallest reliable touch target on iOS. */
+        width: 44px;
+        height: 44px;
+        padding: 0;
+
+        border: 1px solid rgba(63, 224, 200, 0.4);
+        border-radius: 10px;
+        background: rgba(5, 7, 13, 0.72);
+        color: #3fe0c8;
+        -webkit-backdrop-filter: blur(6px);
+        backdrop-filter: blur(6px);
+        cursor: pointer;
+        /* `manipulation` still allows the tap; `none` on the ancestors would not. */
+        touch-action: manipulation;
+      }
+
+      /* `display: flex` above would otherwise beat the `hidden` attribute. */
+      #fullscreen-btn[hidden],
+      #a2hs-hint[hidden] {
+        display: none;
+      }
+
+      #fullscreen-btn svg {
+        width: 22px;
+        height: 22px;
+        fill: none;
+        stroke: currentColor;
+        stroke-width: 2;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+      }
+
+      #fullscreen-btn .icon-exit,
+      #fullscreen-btn.is-fullscreen .icon-enter {
+        display: none;
+      }
+
+      #fullscreen-btn.is-fullscreen .icon-exit {
+        display: block;
+      }
+
+      /* The UA sizes a full-screen element itself; these just stop the page stylesheet
+         from arguing with it. */
+      #game:fullscreen,
+      #game:-webkit-full-screen {
+        width: 100%;
+        height: 100%;
+      }
+
+      /* Shown only where the Fullscreen API is missing or refuses — iPhone Safari, whose
+         route to a chrome-free game is the home screen instead. */
+      #a2hs-hint {
+        position: absolute;
+        left: 50%;
+        bottom: calc(var(--sa-bottom) + 12px);
+        transform: translateX(-50%);
+        z-index: 15;
+
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        max-width: min(92vw, 440px);
+        padding: 10px 14px;
+
+        border: 1px solid rgba(63, 224, 200, 0.3);
+        border-radius: 10px;
+        background: rgba(5, 7, 13, 0.92);
+        font-size: 12px;
+        line-height: 1.35;
+        color: #8fb6cf;
+      }
+
+      #a2hs-hint p {
+        margin: 0;
+      }
+
+      #a2hs-hint b {
+        color: #cfe9ff;
+        font-weight: 600;
+      }
+
+      #a2hs-dismiss {
+        flex: none;
+        padding: 6px 10px;
+        border: 1px solid rgba(63, 224, 200, 0.4);
+        border-radius: 8px;
+        background: transparent;
+        color: #3fe0c8;
+        font: inherit;
+        cursor: pointer;
+        touch-action: manipulation;
+      }
+
       #boot-fallback {
         position: fixed;
         inset: 0;
@@ -157,12 +263,31 @@
   </head>
   <body>
     <div id="boot-fallback">Loading…</div>
-    <div id="game"></div>
-    <div id="safe-area-probe"></div>
-    <div id="rotate-notice" role="alert">
-      <div class="glyph"></div>
-      <p>Rotate your device</p>
+    <!--
+      Everything that must stay visible *while full screen* lives inside #game, because
+      #game is the element that goes full screen and only it and its descendants are
+      painted in the browser's top layer. A sibling here is not merely behind the game —
+      it is unreachable, pointer events included.
+    -->
+    <div id="game">
+      <button id="fullscreen-btn" type="button" hidden aria-label="Enter full screen">
+        <svg class="icon-enter" viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" />
+        </svg>
+        <svg class="icon-exit" viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5" />
+        </svg>
+      </button>
+      <div id="a2hs-hint" hidden role="status">
+        <p>For full screen, tap <b>Share</b> then <b>Add to Home Screen</b>.</p>
+        <button id="a2hs-dismiss" type="button">Got it</button>
+      </div>
+      <div id="rotate-notice" role="alert">
+        <div class="glyph"></div>
+        <p>Rotate your device</p>
+      </div>
     </div>
+    <div id="safe-area-probe"></div>
     <script type="module" src="/src/main.js"></script>
   </body>
 </html>

@@ -7,6 +7,7 @@ import { GameScene } from './scenes/GameScene.js';
 import { HudScene } from './scenes/HudScene.js';
 import { WinScene } from './scenes/WinScene.js';
 import { installAutoPause, trackVisualViewport } from './systems/lifecycle.js';
+import { installFullscreenToggle } from './systems/fullscreen.js';
 import { audio } from './systems/audio.js';
 import { SPRITE_SIZES } from './gfx/textures.js';
 
@@ -22,7 +23,12 @@ const game = new Phaser.Game({
     autoCenter: Phaser.Scale.CENTER_BOTH,
     width: GAME_WIDTH,
     height: GAME_HEIGHT,
-    expandParent: true
+    expandParent: true,
+    // Left unset, Phaser builds its own wrapper div on the first full-screen request and
+    // *reparents the canvas into it* — which would move the canvas out from under
+    // `expandParent` and out of the element `trackVisualViewport` measures and sizes.
+    // Naming the existing container keeps the DOM exactly as it is.
+    fullscreenTarget: 'game'
   },
   input: {
     activePointers: 3,
@@ -52,7 +58,11 @@ const game = new Phaser.Game({
 });
 
 // Keep the canvas sized to the visible viewport, not the layout one.
-trackVisualViewport(game);
+const refitViewport = trackVisualViewport(game);
+
+// Full-screen toggle: the only way to reclaim the browser toolbar's strip of screen, since
+// this page disables the scrolling that would normally collapse it.
+installFullscreenToggle(game, refitViewport);
 
 // Auto-pause on backgrounding: the HUD listens for this and puts up the pause menu, so
 // the player never comes back to a run already in progress.

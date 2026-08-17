@@ -85,6 +85,9 @@ export function getSafeArea(game) {
  * Driving the container's height from `visualViewport` and refreshing the scale manager
  * when it changes fixes both. Scale mode stays FIT: the design space is still 960x540, so
  * every distance tuned against it — the look-ahead above all — is untouched.
+ *
+ * @returns {() => void} re-runs the measurement, for callers that change the viewport
+ *   themselves rather than waiting to be told about it.
  */
 export function trackVisualViewport(game) {
   const el = document.getElementById('game');
@@ -94,9 +97,16 @@ export function trackVisualViewport(game) {
   let queued = false;
   const apply = () => {
     queued = false;
-    // `100dvh` covers most browsers, but in-app WebViews report it inconsistently, so the
-    // real measurement wins where it is available.
-    if (vv) el.style.height = `${Math.round(vv.height)}px`;
+    if (game.scale.isFullscreen) {
+      // The UA sizes the full-screen element to the whole screen; an inline pixel height
+      // could only disagree with that, and a stale one would pin the game *smaller* than
+      // the screen it just claimed. Hand the height back to the stylesheet instead.
+      el.style.height = '';
+    } else if (vv) {
+      // `100dvh` covers most browsers, but in-app WebViews report it inconsistently, so the
+      // real measurement wins where it is available.
+      el.style.height = `${Math.round(vv.height)}px`;
+    }
     // `refresh()` re-runs the fit maths but does *not* re-measure the parent element;
     // `getParentBounds()` is what samples it. Without this the new size is only picked up
     // by Phaser's own poll, which runs every `resizeInterval` (500ms) — long enough to see
@@ -121,6 +131,11 @@ export function trackVisualViewport(game) {
   window.addEventListener('resize', schedule);
   window.addEventListener('orientationchange', () => setTimeout(schedule, 120));
   apply();
+
+  // Handed to the full-screen toggle: entering and leaving changes the height under us,
+  // and the entry transition is animated, so the measurement has to be re-taken rather
+  // than assumed.
+  return schedule;
 }
 
 /**
