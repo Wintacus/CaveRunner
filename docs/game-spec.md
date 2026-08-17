@@ -62,7 +62,7 @@ Build a 2D side-scrolling auto-runner/platformer for mobile (iOS and Android), i
 
 ## 5. Level Design — Level 1 ("Cave Entrance")
 
-One complete, hand-crafted (not procedurally generated) level, target playtime **~1-2 minutes**, structured in four segments separated by three checkpoints:
+One complete, hand-crafted (not procedurally generated) level, target playtime **~1-2 minutes**, structured in four segments separated by four checkpoints (segment 3, the densest, carries two):
 
 **Segment 1 — Entrance (~15-20 sec)**
 Teaches the jump. Simple gaps and one stalagmite obstacle. No creatures. Should be easy enough that a first-time player succeeds without difficulty — this segment exists purely to build confidence and let coyote time/jump buffering do their job invisibly.

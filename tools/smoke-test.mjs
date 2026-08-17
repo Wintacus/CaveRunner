@@ -10,6 +10,14 @@
 import { chromium } from 'playwright';
 import fs from 'node:fs';
 import path from 'node:path';
+import { ENTITIES } from '../src/level/level1.js';
+
+// Read from the level rather than hand-copied here: this list went stale the moment a
+// fourth checkpoint was added, and a marker check that silently skips the new marker is
+// worse than no check.
+const MARKER_TILES = ENTITIES.filter((e) => e.type === 'checkpoint' || e.type === 'goal')
+  .map((e) => e.x)
+  .sort((a, b) => a - b);
 
 const args = process.argv.slice(2);
 const arg = (name, fallback) => {
@@ -249,12 +257,12 @@ if (sizes.length < 20 || sizeProblems.length) {
  * never fires, the level simply ends and the runner falls off the far side of the last
  * platform instead of winning.
  */
-const markers = await page.evaluate(() => {
+const markers = await page.evaluate((MARKER_TILES) => {
   const scene = window.__game.scene.getScene('Game');
   const out = [];
   const TILE = 32;
   let t = 0;
-  for (const tile of [166, 376, 648, 812]) {
+  for (const tile of MARKER_TILES) {
     scene.player.setFrozen(true);
     scene.player.setPosition((tile - 8) * TILE, 13 * TILE);
     scene.director.rewindTo((tile - 8) * TILE);
@@ -265,16 +273,17 @@ const markers = await page.evaluate(() => {
     if (e) out.push({ type: e.def.type, tile, top: Math.round(e.body.top), surface: Math.round(e.def.y) });
   }
   return out;
-});
+}, MARKER_TILES);
 
 // The runner's lowest point at the top of a full hold. Anything the trigger fails to reach
 // is a height at which the player passes straight through the marker.
 const APEX_PX = 190;
 const missable = markers.filter((m) => m.top > m.surface - APEX_PX);
 console.log(`markers checked: ${markers.length}, jumpable-over: ${missable.length}`);
-if (markers.length < 4 || missable.length) {
+if (markers.length < MARKER_TILES.length || missable.length) {
   console.error('\nmarker trigger check failed:');
-  if (markers.length < 4) console.error(`  only found ${markers.length} of 4 markers`);
+  if (markers.length < MARKER_TILES.length)
+    console.error(`  only found ${markers.length} of ${MARKER_TILES.length} markers`);
   missable.forEach((m) => console.error(`  ${m.type} at tile ${m.tile}: trigger starts at y=${m.top}, player clears it at y=${m.surface - APEX_PX}`));
   await browser.close();
   process.exit(1);

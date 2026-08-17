@@ -14,8 +14,12 @@
  * Pacing reference: the runner covers 370px/s = 11.6 tiles/s.
  *   Segment 1  x   0-168   ~15s   Entrance          -> checkpoint 1 @ 166
  *   Segment 2  x 168-393   ~20s   Bats              -> checkpoint 2 @ 376, power-up @ 386
- *   Segment 3  x 394-655   ~23s   Spiders + combo   -> checkpoint 3 @ 648
+ *   Segment 3  x 394-655   ~23s   Spiders + combo   -> checkpoints 3 @ 549, 4 @ 648
  *   Segment 4  x 656-812   ~15s   Finale            -> goal @ 812
+ *
+ * Checkpoints are spaced by *replay cost*, not by distance: what a death actually costs is
+ * the run back to the last one, so the densest stretch needs the closest spacing rather
+ * than the widest. Segment 3 carries two for that reason.
  *
  * Obstacle placement is paced against `tools/pacing-report.mjs`: device testing found a
  * third of the run was spent watching rather than playing, concentrated in four stretches
@@ -247,7 +251,19 @@ const progression = [
   { type: 'checkpoint', x: 166, y: 14, index: 1 },
   { type: 'checkpoint', x: 376, y: 14, index: 2 },
   { type: 'powerup', x: 386, y: 12.8 }, // banked right before the hardest stretch
-  { type: 'checkpoint', x: 648, y: 14, index: 3 },
+  // Splits what was the level's longest gap, which was also its densest: 23.5s and 16
+  // hazards between checkpoints 2 and 3, so the stretch most likely to kill you was also
+  // the most expensive to redo — 22.7s of replay, a third of the level, for a death at the
+  // stalagmite on 638. Worst-case replay in this segment drops to 14.5s and the level's
+  // mean across every hazard goes 9.7s -> 7.2s.
+  //
+  // 549 is the least bad spot rather than a good one. Segment 3 is built from 18-24 tile
+  // platforms strung over pits, with no long run like the ones checkpoints 1, 2 and 4 sit
+  // on, so the protected calm after this one is 1.0s against checkpoint 2's 1.4s. It buys
+  // the most it can: past the spikes ending at 547, and 12 tiles clear of the forced-low
+  // pit at 561. Two tiles later and that pit is too close to read on a respawn.
+  { type: 'checkpoint', x: 549, y: 14, index: 3 },
+  { type: 'checkpoint', x: 648, y: 14, index: 4 },
   { type: 'goal', x: 812, y: 14 } // ~1.5s of clear run-in, was 5.5s
 ];
 
