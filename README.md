@@ -26,7 +26,7 @@ At 370px/s a full hold covers 314px of flat ground, which is why the pits are 4-
 wide rather than the 3-5 they were at 330: the speed and the gaps have to move together or
 a faster runner just gets an easier level.
 
-The level is ~70 seconds of clean running, split into four segments by four checkpoints:
+The level is ~70 seconds of clean running, split into four segments by three checkpoints:
 
 | Segment | Tiles | Time | Introduces |
 |---|---|---|---|

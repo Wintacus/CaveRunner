@@ -534,29 +534,41 @@ if (ENTITIES.filter((e) => e.type === 'powerup').length !== 1) errors.push('expe
 if (ENTITIES.filter((e) => e.type === 'goal').length !== 1) errors.push('expected exactly 1 goal marker');
 
 /**
- * What a death actually costs is the run back from the last checkpoint, so that is what
- * gets measured — not the number of checkpoints, which says nothing on its own.
+ * What a death costs, which is not the same as how far back it sends you.
  *
- * This used to assert "exactly 3", which passed happily while the level's longest gap sat
- * on top of its densest stretch: 16 hazards between checkpoints 2 and 3, and 22.7s of
- * replay for a death at the far end of it — a third of the level, through the hardest
- * content, which is exactly where deaths concentrate. Difficulty and punishment were
- * correlated the wrong way round and nothing here could see it.
+ * This used to assert "exactly 3 checkpoints" — a number that says nothing, and that
+ * passed happily while the level's longest gap sat on top of its densest stretch: 16
+ * hazards between checkpoints 2 and 3, 22.7s of replay for a death at the far end.
  *
- * 20s is set above the level's current worst (16.1s, in the gentle second segment) and
- * below what that spider stretch used to cost, so it would have caught the bug it was
- * written for while leaving room to design.
+ * The first version of this rule measured that replay time alone and called it unfair. It
+ * was wrong, and a playtest is what said so. `director.rewindTo` un-takes every def at or
+ * past the checkpoint except other checkpoints, so a power-up inside the gap is back on the
+ * ground for every respawn — dying into checkpoint 2 re-arms the shield ten tiles later,
+ * every time. That stretch opens by handing the player an extra hit, which is exactly what
+ * pays for its length; splitting it as well left nothing at stake and had to be reverted.
+ *
+ * So the allowance depends on what respawning gives back. The bare cap is set above the
+ * level's longest unprotected gap (16.1s, the gentle second segment) and below the 22.7s
+ * that prompted all this, so a genuinely unmitigated long run still fails.
  */
 const MAX_REPLAY_S = 20;
+const MAX_REPLAY_WITH_PICKUP_S = 26;
+const powerupXs = ENTITIES.filter((e) => e.type === 'powerup').map((e) => e.x);
 const tps = RUN_SPEED / TILE;
 for (const hx of hazardXs) {
   const prior = checkpoints.filter((cp) => cp.x <= hx).pop();
   const from = prior ? prior.x : 0;
   const replay = (hx - from) / tps;
-  if (replay > MAX_REPLAY_S) {
+  // Only a pickup the player re-collects on the way back counts: it has to sit at or after
+  // the checkpoint (or `rewindTo` leaves it taken) and before the hazard.
+  const rearmed = powerupXs.some((px) => px >= from && px < hx);
+  const cap = rearmed ? MAX_REPLAY_WITH_PICKUP_S : MAX_REPLAY_S;
+  if (replay > cap) {
     errors.push(
       `hazard at x=${hx} is ${replay.toFixed(1)}s past the last checkpoint (x=${from}) — ` +
-        `dying there replays more than ${MAX_REPLAY_S}s; the gap needs splitting`
+        `dying there replays more than ${cap}s` +
+        `${rearmed ? ' even with the power-up re-armed on the way back' : ' with nothing handed back'}` +
+        '; the gap needs splitting'
     );
   }
 }

@@ -115,7 +115,7 @@ grow with it.
 ## 3. The level
 
 850×18 tiles, 32px each. The walkable floor surface is row 14; the ceiling occupies rows
-0–1. Total run is ~70 seconds, spawn to goal, split by four checkpoints.
+0–1. Total run is ~70 seconds, spawn to goal, split by three checkpoints.
 
 | Segment | Tiles | Time | Introduces |
 |---|---|---|---|
@@ -128,8 +128,8 @@ Checkpoints at tiles 166, 376 and 648. The one shield power-up is at tile 386, i
 after checkpoint 2 and immediately before the hardest section. Goal at tile 812.
 
 **Contents:** 246 crystals, 15 bats, 9 spiders, 12 static hazards (8 stalagmites, a 3-tile
-spike run, 1 stalactite), 4 checkpoints, 1 power-up, 1 goal, 2 instruction signs and the
-spawn point — 291 objects in the compiled map.
+spike run, 1 stalactite), 3 checkpoints, 1 power-up, 1 goal, 2 instruction signs and the
+spawn point — 290 objects in the compiled map.
 
 **Pacing**, measured by `npm run pacing`, which counts beats demanding an input and the dead
 air between them:
