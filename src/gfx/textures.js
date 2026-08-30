@@ -187,7 +187,7 @@ function makePlayer(scene, key, { crouch = false, rim = COLORS.teal } = {}) {
     if (art) {
       const bodyH = crouch ? h - 6 : h;
       const bodyY = oy + (h - bodyH);
-      stampContained(ctx, art, ox, bodyY, w, bodyH);
+      stampContained(ctx, art, 2, 2, w + 12, h + 12);
       // Destination-over so the gray hat cannot be multiplied into the rim glow.
       glowBehind(ctx, ox + w / 2, oy + h / 2, 22, rim, rim === COLORS.amber ? 0.55 : 0.28);
       return;
@@ -624,9 +624,13 @@ function rng(seed) {
 
 function makeParallax(scene, height) {
   const W = 512;
+  // TileSprite + WebGL GL_REPEAT needs power-of-two sources. 540 is NPOT and Phaser
+  // would stretch each layer into a 1024-tall pad, which is the dark-rectangle bug.
+  const H = 512;
+  void height;
 
   // Far: the back wall of the cavern, plus a haze of distant spores.
-  canvasTexture(scene, KEYS.bgFar, W, height, (ctx, w, h) => {
+  canvasTexture(scene, KEYS.bgFar, W, H, (ctx, w, h) => {
     const g = ctx.createLinearGradient(0, 0, 0, h);
     g.addColorStop(0, '#080b14');
     g.addColorStop(0.55, '#0d1220');
@@ -662,9 +666,9 @@ function makeParallax(scene, height) {
     const midH = 512;
     canvasTexture(scene, KEYS.bgMid, midW, midH, (ctx, w, h) => {
       stampCover(ctx, midArt, 0, 0, w, h);
-      wrapBlendHorizontal(ctx, w, h, 96);
+      wrapBlendHorizontal(ctx, w, h, 128);
     });
-  } else canvasTexture(scene, KEYS.bgMid, W, height, (ctx, w, h) => {
+  } else canvasTexture(scene, KEYS.bgMid, W, H, (ctx, w, h) => {
     const r = rng(21);
     ctx.fillStyle = 'rgba(13,18,30,0.95)';
     for (let i = 0; i < 6; i++) {
@@ -697,7 +701,7 @@ function makeParallax(scene, height) {
   });
 
   // Near: dark foreground rock framing the top and bottom of the screen.
-  canvasTexture(scene, KEYS.bgNear, W, height, (ctx, w, h) => {
+  canvasTexture(scene, KEYS.bgNear, W, H, (ctx, w, h) => {
     const r = rng(99);
     ctx.fillStyle = 'rgba(4,6,11,0.97)';
     ctx.beginPath();

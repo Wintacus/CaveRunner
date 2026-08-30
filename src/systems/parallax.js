@@ -15,27 +15,25 @@ import { KEYS, SPRITE_SIZES } from '../gfx/textures.js';
  */
 export class Parallax {
   constructor(scene) {
-    const layer = (key, depth, factor, { lockY = false } = {}) => ({
-      sprite: scene.add
+    const layer = (key, depth, factor, { lockY = false } = {}) => {
+      const sprite = scene.add
         .tileSprite(0, 0, GAME_WIDTH, GAME_HEIGHT, key)
         .setOrigin(0, 0)
         .setScrollFactor(0)
-        .setDepth(depth),
-      factor,
-      lockY
-    });
+        .setDepth(depth);
+      const size = SPRITE_SIZES[key];
+      if (size && size[1] && size[1] !== GAME_HEIGHT) {
+        const s = GAME_HEIGHT / size[1];
+        sprite.setTileScale(s, s);
+      }
+      return { sprite, factor, lockY };
+    };
 
     this.layers = [
       layer(KEYS.bgFar, -40, 0.1), // distant cave wall
       layer(KEYS.bgMid, -30, 0.32, { lockY: true }), // painted cavern
       layer(KEYS.bgNear, 26, 0.66) // foreground rock framing the top and bottom
     ];
-
-    const midSize = SPRITE_SIZES[KEYS.bgMid];
-    if (midSize && midSize[1] !== GAME_HEIGHT) {
-      const scale = GAME_HEIGHT / midSize[1];
-      this.layers[1].sprite.setTileScale(scale, scale);
-    }
 
     // Ambient spores. Screen-space, so they cost nothing to keep alive for the whole level.
     this.spores = scene.add

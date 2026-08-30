@@ -251,6 +251,8 @@ if (sizes.length < 20 || sizeProblems.length) {
  */
 const markers = await page.evaluate(() => {
   const scene = window.__game.scene.getScene('Game');
+  scene.time.removeAllEvents();
+  scene.state = 'running';
   const out = [];
   const TILE = 32;
   let t = 0;
