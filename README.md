@@ -281,12 +281,14 @@ deliberately not on jumps or crystals, which would be constant background buzz.
 
 Most sprites, the far/near parallax layers and the tileset are still drawn procedurally
 (`src/gfx/textures.js`, `tools/build-tileset.mjs`): dark stone silhouettes with glowing rim
-light. Three keys are file-backed and stamped into the existing canvas sizes at boot, so
+light. Four keys are file-backed and stamped into the existing canvas sizes at boot, so
 hitboxes do not change:
 
-- player (and jump/shield variants of the same silhouette) — `public/assets/art/runner-v4.png`
+- player (and jump/shield variants of the same silhouette) — `public/assets/art/runner-v4-gray-hat.png`
+- pickup crystal — `public/assets/art/crystal-amber.png`
 - spike and stalagmite — `public/assets/art/spikes-rose.png`
-- mid parallax (`bg_mid`) — `public/assets/art/background-v2.png`
+- mid parallax (`bg_mid`) — `public/assets/art/background-v2.png` (stamped into a
+  power-of-two tile at boot; the PNG itself is not rewritten)
 
 Bats and spiders stay procedural. `ART_FILES` in `src/gfx/textures.js` is the swap list;
 PNGs are loaded in `PreloadScene` and drawn into the matching `make*` canvases.

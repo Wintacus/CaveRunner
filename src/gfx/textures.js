@@ -5,12 +5,11 @@
  * with glowing rim light). Three keys are stamped from files in `public/assets/art/` so the
  * look can change without touching hitboxes.
  *
- * ART SWAP POINT — three keys are now file-backed (see `ART_FILES`) and stamped into the
- * existing canvas sizes at boot so hitboxes do not change: the runner (and its jump/shield
- * variants of the same silhouette), spike + stalagmite, and the mid parallax layer. Bats,
+ * ART SWAP POINT — file-backed keys (see `ART_FILES`) are stamped into existing canvas
+ * sizes at boot so hitboxes do not change: runner (jump/shield variants of the same
+ * silhouette), spike + stalagmite, pickup crystal, and the mid parallax layer. Bats,
  * spiders and everything else stay procedural. Further swaps: load a PNG in PreloadScene,
- * add it to `ART_FILES`, and stamp it from the matching `make*` below. `KEYS` lists every
- * texture key the game uses and `SPRITE_SIZES` gives the pixel size of each one.
+ * add it to `ART_FILES`, and stamp it from the matching `make*` below.
  *
  * SPRITE_SIZES is filled in by `canvasTexture` as the textures are drawn rather than
  * maintained by hand. The hand-written version had drifted badly — six of its ten entries
@@ -59,9 +58,10 @@ export const SPRITE_SIZES = {};
  * matching KEYS canvas at the size the game already uses.
  */
 export const ART_FILES = {
-  runner: { key: 'art_runner', path: 'assets/art/runner-v4.png' },
+  runner: { key: 'art_runner', path: 'assets/art/runner-v4-gray-hat.png' },
   spikes: { key: 'art_spikes', path: 'assets/art/spikes-rose.png' },
-  bgMid: { key: 'art_bg_mid', path: 'assets/art/background-v2.png' }
+  bgMid: { key: 'art_bg_mid', path: 'assets/art/background-v2.png' },
+  crystal: { key: 'art_crystal', path: 'assets/art/crystal-amber.png' }
 };
 
 
@@ -101,6 +101,42 @@ function stampContained(ctx, img, x, y, boxW, boxH) {
   const dh = img.height * scale;
   ctx.drawImage(img, x + (boxW - dw) / 2, y + (boxH - dh), dw, dh);
   return true;
+}
+
+/** Cover-draw `img` into a box (may crop). Used for the mid parallax tile. */
+function stampCover(ctx, img, x, y, boxW, boxH) {
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'high';
+  const scale = Math.max(boxW / img.width, boxH / img.height);
+  const dw = img.width * scale;
+  const dh = img.height * scale;
+  ctx.drawImage(img, x + (boxW - dw) / 2, y + (boxH - dh) / 2, dw, dh);
+}
+
+/**
+ * Cross-fade the left `blend` pixels onto the right edge so a GL_REPEAT wrap is seamless.
+ * The source PNG is left untouched; this only runs on the runtime canvas.
+ */
+function wrapBlendHorizontal(ctx, w, h, blend) {
+  const slice = Math.min(blend, w >> 2);
+  if (slice < 2) return;
+  const tmp = document.createElement('canvas');
+  tmp.width = slice;
+  tmp.height = h;
+  tmp.getContext('2d').drawImage(ctx.canvas, 0, 0, slice, h, 0, 0, slice, h);
+  for (let i = 0; i < slice; i++) {
+    ctx.globalAlpha = i / (slice - 1);
+    ctx.drawImage(tmp, i, 0, 1, h, w - slice + i, 0, 1, h);
+  }
+  ctx.globalAlpha = 1;
+}
+
+/** Glow behind opaque art, never composited through it (that crushed the gray hat). */
+function glowBehind(ctx, x, y, radius, colour, strength) {
+  ctx.save();
+  ctx.globalCompositeOperation = 'destination-over';
+  glowBlob(ctx, x, y, radius, colour, strength);
+  ctx.restore();
 }
 
 /** Soft radial glow behind a shape — the core of the bioluminescent look. */
@@ -149,10 +185,11 @@ function makePlayer(scene, key, { crouch = false, rim = COLORS.teal } = {}) {
     const oy = 8;
     const art = sourceImage(scene, ART_FILES.runner.key);
     if (art) {
-      glowBlob(ctx, ox + w / 2, oy + h / 2, 22, rim, rim === COLORS.amber ? 0.55 : 0.28);
       const bodyH = crouch ? h - 6 : h;
       const bodyY = oy + (h - bodyH);
       stampContained(ctx, art, ox, bodyY, w, bodyH);
+      // Destination-over so the gray hat cannot be multiplied into the rim glow.
+      glowBehind(ctx, ox + w / 2, oy + h / 2, 22, rim, rim === COLORS.amber ? 0.55 : 0.28);
       return;
     }
     glowBlob(ctx, ox + w / 2, oy + h / 2, 22, rim, 0.5);
@@ -302,6 +339,12 @@ function makeSpider(scene, key, spread) {
 // ---------------------------------------------------------------------------
 function makeCrystal(scene) {
   canvasTexture(scene, KEYS.crystal, 36, 42, (ctx) => {
+    const art = sourceImage(scene, ART_FILES.crystal.key);
+    if (art) {
+      stampContained(ctx, art, 0, 0, 36, 42);
+      glowBehind(ctx, 18, 21, 17, COLORS.amber, 0.7);
+      return;
+    }
     glowBlob(ctx, 18, 21, 17, COLORS.teal, 0.75);
     polygon(ctx, [
       [18, 4],
@@ -610,14 +653,16 @@ function makeParallax(scene, height) {
     }
   });
 
-  // Mid: painted cavern (file-backed) or procedural rock + fungus shelves.
+  // Mid: painted cavern. TileSprite needs a power-of-two texture or Phaser stretches the
+  // painting into a 1024x1024 pad and GL_REPEAT samples the leftover as dark rectangles
+  // and a vertical seam. 1024x512 is POT, filled, and wrap-blended; the PNG is unchanged.
   const midArt = sourceImage(scene, ART_FILES.bgMid.key);
   if (midArt) {
-    const midW = Math.max(W, Math.round(midArt.width * (height / midArt.height)));
-    canvasTexture(scene, KEYS.bgMid, midW, height, (ctx, w, h) => {
-      ctx.imageSmoothingEnabled = true;
-      ctx.imageSmoothingQuality = 'high';
-      ctx.drawImage(midArt, 0, 0, w, h);
+    const midW = 1024;
+    const midH = 512;
+    canvasTexture(scene, KEYS.bgMid, midW, midH, (ctx, w, h) => {
+      stampCover(ctx, midArt, 0, 0, w, h);
+      wrapBlendHorizontal(ctx, w, h, 96);
     });
   } else canvasTexture(scene, KEYS.bgMid, W, height, (ctx, w, h) => {
     const r = rng(21);
