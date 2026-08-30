@@ -10,8 +10,9 @@ import { KEYS, SPRITE_SIZES } from '../gfx/textures.js';
  * manually — that gives exact control over each layer's rate and keeps a 850-tile level
  * from needing 850 tiles of background art.
  *
- * The painted mid layer is a power-of-two tile (see textures.js). Vertical wrap of that
- * painting would flash the floor into the ceiling, so its Y offset stays locked.
+ * The painted mid layer is a mirrored power-of-two tile (see textures.js) so a unique
+ * 960x540 scene can wrap without a vertical seam. Vertical wrap of that painting would
+ * flash the floor into the ceiling, so its Y offset stays locked.
  */
 export class Parallax {
   constructor(scene) {

@@ -56,6 +56,7 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
 
     this.invulnTimer = 0;
     this.flashTimer = 0;
+    this.runT = 0;
 
     this.onLand = null; // set by GameScene (dust + camera nudge)
     this.onJump = null;
@@ -160,6 +161,9 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
   /** Texture for the current pose, in the current shield state. */
   #poseTexture() {
     if (this.airborne && this.jumping) return this.shielded ? KEYS.playerJumpShield : KEYS.playerJump;
+    if (!this.airborne && Math.sin(this.runT / 70) >= 0) {
+      return this.shielded ? KEYS.playerRunShield : KEYS.playerRun;
+    }
     return this.shielded ? KEYS.playerShield : KEYS.player;
   }
 
@@ -169,14 +173,15 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     this.setScale(1, 1);
     this.setAngle(0);
     this.setAlpha(1);
-    this.setTexture(this.shielded ? KEYS.playerShield : KEYS.player);
-    if (this.bubble) this.bubble.setVisible(this.shielded);
     this.coyoteTimer = 0;
     this.bufferTimer = 0;
     this.holdTimer = 0;
+    this.runT = 0;
     this.jumping = false;
     this.airborne = false;
     this.holding = false;
+    this.setTexture(this.#poseTexture());
+    if (this.bubble) this.bubble.setVisible(this.shielded);
   }
 
   /** Called on pointer/key down. Always fills the buffer — the buffer decides when it fires. */
@@ -258,7 +263,7 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     this.body.setVelocityX(RUN_SPEED);
 
     this.#updateInvuln(dt);
-    this.#updatePose();
+    this.#updatePose(dt);
     this.#updateShieldBubble(dt);
   }
 
@@ -285,7 +290,7 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
   }
 
   #land() {
-    this.setTexture(this.shielded ? KEYS.playerShield : KEYS.player);
+    this.setTexture(this.#poseTexture());
     this.scene.tweens.add({
       targets: this,
       scaleX: 1.18,
@@ -324,8 +329,10 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     }
   }
 
-  /** Lean and stretch with the arc — cheap, and it sells the weight of the jump. */
-  #updatePose() {
+  /** Lean and stretch with the arc — cheap, and it sells the weight of the jump.
+   * On the ground the art-swap still has no spritesheet, so two stamped frames plus a
+   * lean replace the slide. Jump/land squash tweens still own scale while they run. */
+  #updatePose(dt) {
     const vy = this.body.velocity.y;
     if (this.airborne) {
       this.setAngle(Phaser.Math.Clamp(vy * 0.014, -10, 14));
@@ -334,7 +341,13 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
         this.setScale(2 - stretch, stretch);
       }
     } else {
-      this.setAngle(Phaser.Math.Linear(this.angle, 0, 0.35));
+      this.runT += dt;
+      const step = Math.sin(this.runT / 70);
+      this.setAngle(Phaser.Math.Linear(this.angle, step * 7, 0.45));
+      if (!this.scene.tweens.isTweening(this)) {
+        this.setScale(1, 1);
+        this.setTexture(this.#poseTexture());
+      }
     }
   }
 }

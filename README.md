@@ -287,8 +287,9 @@ hitboxes do not change:
 - player (and jump/shield variants of the same silhouette) — `public/assets/art/runner-v4-gray-hat.png`
 - pickup crystal — `public/assets/art/crystal-amber.png`
 - spike and stalagmite — `public/assets/art/spikes-rose.png`
-- mid parallax (`bg_mid`) — `public/assets/art/background-v2.png` (stamped into a
-  power-of-two tile at boot; the PNG itself is not rewritten)
+- mid parallax (`bg_mid`) — `public/assets/art/background-v2.png` (cover-stamped and
+  mirrored into a 2048×512 tile at boot so a unique scene can wrap without a seam;
+  the PNG itself is not rewritten)
 
 Bats and spiders stay procedural. `ART_FILES` in `src/gfx/textures.js` is the swap list;
 PNGs are loaded in `PreloadScene` and drawn into the matching `make*` canvases.

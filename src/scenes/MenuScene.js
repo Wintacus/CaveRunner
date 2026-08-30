@@ -32,17 +32,26 @@ export class MenuScene extends Phaser.Scene {
         fontFamily: 'sans-serif',
         fontSize: '44px',
         fontStyle: 'bold',
-        color: '#3fe0c8',
+        color: '#f4fbff',
+        stroke: '#071018',
+        strokeThickness: 10,
         letterSpacing: 12,
         padding: { x: 26, y: 20 }
       })
       .setOrigin(0.5)
-      .setShadow(0, 0, '#3fe0c8', 12, false, true);
+      .setShadow(0, 4, '#000000', 10, true, true);
 
     // A crystal and the runner, idling on the title card.
     this.add.image(cx - 168, GAME_HEIGHT * 0.36, KEYS.crystal).setScale(1.3);
     const runner = this.add.image(cx + 172, GAME_HEIGHT * 0.36, KEYS.player).setScale(1.3);
     this.tweens.add({ targets: runner, y: '-=14', duration: 900, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
+    this.time.addEvent({
+      delay: 140,
+      loop: true,
+      callback: () => {
+        runner.setTexture(runner.texture.key === KEYS.player ? KEYS.playerRun : KEYS.player);
+      }
+    });
 
     const prompt = this.add
       .text(cx, GAME_HEIGHT * 0.74, 'TAP ANYWHERE TO BEGIN', {

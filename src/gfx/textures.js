@@ -22,8 +22,10 @@ import { COLORS } from '../config/tuning.js';
 
 export const KEYS = {
   player: 'player',
+  playerRun: 'player_run',
   playerJump: 'player_jump',
   playerShield: 'player_shield',
+  playerRunShield: 'player_run_shield',
   playerJumpShield: 'player_jump_shield',
   shieldRing: 'shield_ring',
   shieldShard: 'shield_shard',
@@ -103,6 +105,26 @@ function stampContained(ctx, img, x, y, boxW, boxH) {
   return true;
 }
 
+/**
+ * Stamp the runner still with a squash/lean baked into the canvas. The game object
+ * stays at scale 1 so the Arcade hitbox does not pulse with the gait.
+ */
+function stampRunnerArt(ctx, img, w, h, { squashX = 1, squashY = 1, tilt = 0 } = {}) {
+  const boxX = 2;
+  const boxY = 2;
+  const boxW = w + 12;
+  const boxH = h + 12;
+  ctx.save();
+  const px = boxX + boxW / 2;
+  const py = boxY + boxH;
+  ctx.translate(px, py);
+  ctx.rotate(tilt);
+  ctx.scale(squashX, squashY);
+  ctx.translate(-px, -py);
+  stampContained(ctx, img, boxX, boxY, boxW, boxH);
+  ctx.restore();
+}
+
 /** Cover-draw `img` into a box (may crop). Used for the mid parallax tile. */
 function stampCover(ctx, img, x, y, boxW, boxH) {
   ctx.imageSmoothingEnabled = true;
@@ -175,17 +197,22 @@ function polygon(ctx, points) {
 /**
  * @param {object} opts
  * @param {boolean} opts.crouch  mid-jump tuck
+ * @param {number}  opts.gait    0 = contact (squash), 1 = passing (stretch + lean)
  * @param {number}  opts.rim     rim-light colour; amber marks the shield as a *secondary*
  *                               cue reinforcing the bubble, never as the only signal
  */
-function makePlayer(scene, key, { crouch = false, rim = COLORS.teal } = {}) {
+function makePlayer(scene, key, { crouch = false, gait = 0, rim = COLORS.teal } = {}) {
   const [w, h] = [30, 42];
   canvasTexture(scene, key, w + 16, h + 16, (ctx) => {
     const ox = 8;
     const oy = 8;
     const art = sourceImage(scene, ART_FILES.runner.key);
+    const step = gait
+      ? { squashX: 0.94, squashY: 1.1, tilt: 0.14 }
+      : { squashX: 1.08, squashY: 0.9, tilt: -0.05 };
     if (art) {
-      stampContained(ctx, art, 2, 2, w + 12, h + 12);
+      if (crouch) stampRunnerArt(ctx, art, w, h, { squashX: 1.06, squashY: 0.88, tilt: 0.08 });
+      else stampRunnerArt(ctx, art, w, h, step);
       // Destination-over so the gray hat cannot be multiplied into the rim glow.
       glowBehind(ctx, ox + w / 2, oy + h / 2, 22, rim, rim === COLORS.amber ? 0.55 : 0.28);
       return;
@@ -193,7 +220,7 @@ function makePlayer(scene, key, { crouch = false, rim = COLORS.teal } = {}) {
     glowBlob(ctx, ox + w / 2, oy + h / 2, 22, rim, 0.5);
 
     // Body
-    const bodyH = crouch ? h - 6 : h;
+    const bodyH = crouch ? h - 6 : h - (gait ? 0 : 3);
     const bodyY = oy + (h - bodyH);
     ctx.fillStyle = hex(0x121722);
     roundedRect(ctx, ox + 2, bodyY, w - 4, bodyH, 9);
@@ -217,11 +244,12 @@ function makePlayer(scene, key, { crouch = false, rim = COLORS.teal } = {}) {
     roundedRect(ctx, ox + w - 13, bodyY + 7, 9, 6, 3);
     ctx.fill();
 
-    // Feet
+    // Feet — the old gait. Offset them on the passing frame so a still does not slide.
+    const footShift = gait ? 4 : 0;
     ctx.fillStyle = rgba(rim, 0.55);
-    roundedRect(ctx, ox + 4, oy + h - 5, 9, 5, 2);
+    roundedRect(ctx, ox + 4 + footShift, oy + h - 5, 9, 5, 2);
     ctx.fill();
-    roundedRect(ctx, ox + w - 13, oy + h - 5, 9, 5, 2);
+    roundedRect(ctx, ox + w - 13 - footShift, oy + h - 5, 9, 5, 2);
     ctx.fill();
   });
 }
@@ -656,16 +684,26 @@ function makeParallax(scene, height) {
     wrapBlendHorizontal(ctx, w, h, 48);
   });
 
-  // Mid: painted cavern. TileSprite needs a power-of-two texture or Phaser stretches the
-  // painting into a 1024x1024 pad and GL_REPEAT samples the leftover as dark rectangles
-  // and a vertical seam. 1024x512 is POT, filled, and wrap-blended; the PNG is unchanged.
+  // Mid: painted cavern. The PNG is a unique 960x540 scene, not a tile. Wrapping it as a
+  // TileSprite (even a POT, wrap-blended one) still puts a full-height seam on screen
+  // because the left and right edges of the painting do not match. Mirror the cover-stamp
+  // so the wrap is a reflection — seamless, PNG unchanged.
   const midArt = sourceImage(scene, ART_FILES.bgMid.key);
   if (midArt) {
-    const midW = 1024;
+    const midW = 2048;
     const midH = 512;
     canvasTexture(scene, KEYS.bgMid, midW, midH, (ctx, w, h) => {
-      stampCover(ctx, midArt, 0, 0, w, h);
-      wrapBlendHorizontal(ctx, w, h, 128);
+      const half = w >> 1;
+      stampCover(ctx, midArt, 0, 0, half, h);
+      const tmp = document.createElement('canvas');
+      tmp.width = half;
+      tmp.height = h;
+      tmp.getContext('2d').drawImage(ctx.canvas, 0, 0, half, h, 0, 0, half, h);
+      ctx.save();
+      ctx.translate(w, 0);
+      ctx.scale(-1, 1);
+      ctx.drawImage(tmp, 0, 0);
+      ctx.restore();
     });
   } else canvasTexture(scene, KEYS.bgMid, W, H, (ctx, w, h) => {
     const r = rng(21);
@@ -731,8 +769,10 @@ function makeParallax(scene, height) {
 /** Build every runtime texture. Called once, from PreloadScene. */
 export function generateTextures(scene, viewHeight) {
   makePlayer(scene, KEYS.player);
+  makePlayer(scene, KEYS.playerRun, { gait: 1 });
   makePlayer(scene, KEYS.playerJump, { crouch: true });
   makePlayer(scene, KEYS.playerShield, { rim: COLORS.amber });
+  makePlayer(scene, KEYS.playerRunShield, { gait: 1, rim: COLORS.amber });
   makePlayer(scene, KEYS.playerJumpShield, { crouch: true, rim: COLORS.amber });
   makeShieldRing(scene);
   makeShieldShard(scene);

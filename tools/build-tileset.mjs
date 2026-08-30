@@ -96,22 +96,20 @@ stone(3, STONE_DARK, 1004);
   }
 }
 // 6 — background rock (decorative)
+// Transparent on purpose: an opaque [16,20,30] fill painted a gray rectangle onto the
+// cave. Specks only, so the painted parallax shows through.
 {
   const { ox, oy } = tileOrigin(6);
-  raster.rect(ox, oy, TILE, TILE, [16, 20, 30]);
   const rng = makeRng(1007);
-  for (let i = 0; i < 60; i++) {
-    raster.blend(ox + Math.floor(rng() * TILE), oy + Math.floor(rng() * TILE), STONE_DARK, 0.4 + rng() * 0.4);
+  for (let i = 0; i < 28; i++) {
+    raster.blend(ox + Math.floor(rng() * TILE), oy + Math.floor(rng() * TILE), STONE_LIGHT, 0.18 + rng() * 0.2);
   }
 }
 // 7 — background crystal vein (decorative)
+// Same trap as tile 6: the old opaque body + stacked diamond was the "gray vertical
+// overlay with repeating light-blue diamonds" on the map. Glow only, no tile-shaped fill.
 {
   const { ox, oy } = tileOrigin(7);
-  raster.rect(ox, oy, TILE, TILE, [16, 20, 30]);
-  const rng = makeRng(1008);
-  for (let i = 0; i < 60; i++) {
-    raster.blend(ox + Math.floor(rng() * TILE), oy + Math.floor(rng() * TILE), STONE_DARK, 0.5);
-  }
   // A soft vertical column of light. Constant x, so stacked tiles join seamlessly and it
   // reads as a seam of glowing crystal in the wall rather than a wire hanging in the air.
   for (let y = 0; y < TILE; y++) {
