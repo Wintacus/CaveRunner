@@ -1,15 +1,16 @@
 /**
- * Procedural art.
+ * Runtime textures.
  *
- * Every sprite in the game is drawn here into a canvas texture at boot. That keeps the
- * build asset-free while still delivering the bioluminescent look: dark stone silhouettes
- * with glowing rim light.
+ * Most sprites are still drawn here into a canvas texture at boot (dark stone silhouettes
+ * with glowing rim light). Three keys are stamped from files in `public/assets/art/` so the
+ * look can change without touching hitboxes.
  *
- * ART SWAP POINT — when AI-generated sprite sheets arrive (transparent PNG, grid-based,
- * rows = animation states, columns = frames), delete the matching `make*` call below and
- * load the atlas in PreloadScene instead. `KEYS` lists every texture key the game uses and
- * `SPRITE_SIZES` gives the pixel size of each one, so replacement art can be produced to
- * match.
+ * ART SWAP POINT — three keys are now file-backed (see `ART_FILES`) and stamped into the
+ * existing canvas sizes at boot so hitboxes do not change: the runner (and its jump/shield
+ * variants of the same silhouette), spike + stalagmite, and the mid parallax layer. Bats,
+ * spiders and everything else stay procedural. Further swaps: load a PNG in PreloadScene,
+ * add it to `ART_FILES`, and stamp it from the matching `make*` below. `KEYS` lists every
+ * texture key the game uses and `SPRITE_SIZES` gives the pixel size of each one.
  *
  * SPRITE_SIZES is filled in by `canvasTexture` as the textures are drawn rather than
  * maintained by hand. The hand-written version had drifted badly — six of its ten entries
@@ -53,6 +54,16 @@ export const KEYS = {
  */
 export const SPRITE_SIZES = {};
 
+/**
+ * File-backed replacement art. Loaded in PreloadScene under `key`, then stamped into the
+ * matching KEYS canvas at the size the game already uses.
+ */
+export const ART_FILES = {
+  runner: { key: 'art_runner', path: 'assets/art/runner-v4.png' },
+  spikes: { key: 'art_spikes', path: 'assets/art/spikes-rose.png' },
+  bgMid: { key: 'art_bg_mid', path: 'assets/art/background-v2.png' }
+};
+
 
 const hex = (n) => `#${n.toString(16).padStart(6, '0')}`;
 const rgba = (n, a) => {
@@ -72,6 +83,24 @@ function canvasTexture(scene, key, w, h, draw) {
   draw(ctx, w, h);
   tex.refresh();
   return tex;
+}
+
+function sourceImage(scene, key) {
+  if (!scene.textures.exists(key)) return null;
+  const img = scene.textures.get(key).getSourceImage();
+  return img && img.width ? img : null;
+}
+
+/** Scale `img` to fit `box`, bottom-aligned so grounded sprites keep their feet. */
+function stampContained(ctx, img, x, y, boxW, boxH) {
+  if (!img) return false;
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'high';
+  const scale = Math.min(boxW / img.width, boxH / img.height);
+  const dw = img.width * scale;
+  const dh = img.height * scale;
+  ctx.drawImage(img, x + (boxW - dw) / 2, y + (boxH - dh), dw, dh);
+  return true;
 }
 
 /** Soft radial glow behind a shape — the core of the bioluminescent look. */
@@ -118,6 +147,14 @@ function makePlayer(scene, key, { crouch = false, rim = COLORS.teal } = {}) {
   canvasTexture(scene, key, w + 16, h + 16, (ctx) => {
     const ox = 8;
     const oy = 8;
+    const art = sourceImage(scene, ART_FILES.runner.key);
+    if (art) {
+      glowBlob(ctx, ox + w / 2, oy + h / 2, 22, rim, rim === COLORS.amber ? 0.55 : 0.28);
+      const bodyH = crouch ? h - 6 : h;
+      const bodyY = oy + (h - bodyH);
+      stampContained(ctx, art, ox, bodyY, w, bodyH);
+      return;
+    }
     glowBlob(ctx, ox + w / 2, oy + h / 2, 22, rim, 0.5);
 
     // Body
@@ -376,6 +413,12 @@ function makeStalagmite(scene) {
   const w = 48;
   const h = 68;
   canvasTexture(scene, KEYS.stalagmite, w, h, (ctx) => {
+    const art = sourceImage(scene, ART_FILES.spikes.key);
+    if (art) {
+      glowBlob(ctx, w / 2, 14, 20, COLORS.rose, 0.35);
+      stampContained(ctx, art, 0, 0, w, h);
+      return;
+    }
     glowBlob(ctx, w / 2, 14, 20, COLORS.rose, 0.4);
     polygon(ctx, [
       [w / 2 - 15, h],
@@ -422,6 +465,12 @@ function makeSpike(scene) {
   const w = 32;
   const h = 30;
   canvasTexture(scene, KEYS.spike, w, h, (ctx) => {
+    const art = sourceImage(scene, ART_FILES.spikes.key);
+    if (art) {
+      glowBlob(ctx, w / 2, h - 6, 16, COLORS.rose, 0.3);
+      stampContained(ctx, art, 0, 0, w, h);
+      return;
+    }
     glowBlob(ctx, w / 2, h - 6, 16, COLORS.rose, 0.35);
     ctx.fillStyle = hex(0x232a3a);
     ctx.strokeStyle = rgba(COLORS.rose, 0.85);
@@ -561,8 +610,16 @@ function makeParallax(scene, height) {
     }
   });
 
-  // Mid: rock formations rising from the floor with glowing fungus shelves.
-  canvasTexture(scene, KEYS.bgMid, W, height, (ctx, w, h) => {
+  // Mid: painted cavern (file-backed) or procedural rock + fungus shelves.
+  const midArt = sourceImage(scene, ART_FILES.bgMid.key);
+  if (midArt) {
+    const midW = Math.max(W, Math.round(midArt.width * (height / midArt.height)));
+    canvasTexture(scene, KEYS.bgMid, midW, height, (ctx, w, h) => {
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = 'high';
+      ctx.drawImage(midArt, 0, 0, w, h);
+    });
+  } else canvasTexture(scene, KEYS.bgMid, W, height, (ctx, w, h) => {
     const r = rng(21);
     ctx.fillStyle = 'rgba(13,18,30,0.95)';
     for (let i = 0; i < 6; i++) {

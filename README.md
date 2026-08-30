@@ -279,17 +279,23 @@ deliberately not on jumps or crystals, which would be constant background buzz.
 
 ## Art
 
-All sprites, the parallax layers and the tileset are drawn procedurally
+Most sprites, the far/near parallax layers and the tileset are still drawn procedurally
 (`src/gfx/textures.js`, `tools/build-tileset.mjs`): dark stone silhouettes with glowing rim
-light, plus three parallax depth layers and drifting spores. There are no binary art assets
-to manage yet, and the whole look is one file to re-tune.
+light. Three keys are file-backed and stamped into the existing canvas sizes at boot, so
+hitboxes do not change:
 
-**Swapping in AI-generated sprites**: `KEYS` in `src/gfx/textures.js` lists every texture key
+- player (and jump/shield variants of the same silhouette) — `public/assets/art/runner-v4.png`
+- spike and stalagmite — `public/assets/art/spikes-rose.png`
+- mid parallax (`bg_mid`) — `public/assets/art/background-v2.png`
+
+Bats and spiders stay procedural. `ART_FILES` in `src/gfx/textures.js` is the swap list;
+PNGs are loaded in `PreloadScene` and drawn into the matching `make*` canvases.
+
+**Swapping in further sprites**: `KEYS` in `src/gfx/textures.js` lists every texture key
 the game uses, and `SPRITE_SIZES` gives the pixel size of each one. Generate
-transparent-background PNG sheets to those sizes (grid layout: rows = animation states,
-columns = frames), load them as atlases in `PreloadScene`, and delete the matching `make*`
-call. Packing them into a single atlas at that point is also the moment to cut draw calls,
-which the current one-texture-per-sprite approach doesn't do.
+transparent-background PNGs, add them to `ART_FILES`, load them in `PreloadScene`, and stamp
+from the matching `make*` call. Packing them into a single atlas at that point is also the
+moment to cut draw calls, which the current one-texture-per-sprite approach doesn't do.
 
 `SPRITE_SIZES` is populated as the textures are drawn rather than written by hand, and the
 smoke test asserts it matches. It was hand-maintained until it wasn't worth trusting: six of

@@ -1,8 +1,8 @@
 import Phaser from 'phaser';
 import { GAME_WIDTH, GAME_HEIGHT, COLORS } from '../config/tuning.js';
-import { generateTextures } from '../gfx/textures.js';
+import { generateTextures, ART_FILES } from '../gfx/textures.js';
 
-/** Preload: loading bar, level + tileset load, and generation of the procedural art. */
+/** Preload: loading bar, level + tileset + file art, then stamp/generate textures. */
 export class PreloadScene extends Phaser.Scene {
   constructor() {
     super('Preload');
@@ -45,10 +45,12 @@ export class PreloadScene extends Phaser.Scene {
 
     this.load.image('cave_tiles', 'assets/tilesets/cave_tiles.png');
     this.load.tilemapTiledJSON('level1', 'assets/levels/level1.tmj');
+    for (const { key, path } of Object.values(ART_FILES)) this.load.image(key, path);
   }
 
   create() {
-    // ART SWAP POINT: replace this with atlas loads once generated sprite sheets exist.
+    // File-backed art (ART_FILES) is already loaded; this stamps it into KEYS canvases
+    // and still generates the remaining procedural sprites.
     generateTextures(this, GAME_HEIGHT);
     this.scene.start('Menu');
   }
