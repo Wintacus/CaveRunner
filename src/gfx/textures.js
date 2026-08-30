@@ -185,8 +185,6 @@ function makePlayer(scene, key, { crouch = false, rim = COLORS.teal } = {}) {
     const oy = 8;
     const art = sourceImage(scene, ART_FILES.runner.key);
     if (art) {
-      const bodyH = crouch ? h - 6 : h;
-      const bodyY = oy + (h - bodyH);
       stampContained(ctx, art, 2, 2, w + 12, h + 12);
       // Destination-over so the gray hat cannot be multiplied into the rim glow.
       glowBehind(ctx, ox + w / 2, oy + h / 2, 22, rim, rim === COLORS.amber ? 0.55 : 0.28);
@@ -655,6 +653,7 @@ function makeParallax(scene, height) {
       ]);
       ctx.fill();
     }
+    wrapBlendHorizontal(ctx, w, h, 48);
   });
 
   // Mid: painted cavern. TileSprite needs a power-of-two texture or Phaser stretches the
@@ -703,20 +702,29 @@ function makeParallax(scene, height) {
   // Near: dark foreground rock framing the top and bottom of the screen.
   canvasTexture(scene, KEYS.bgNear, W, H, (ctx, w, h) => {
     const r = rng(99);
+    const top = [];
+    const bot = [];
+    for (let x = 0; x <= w; x += 64) {
+      top.push(10 + r() * 26);
+      bot.push(12 + r() * 30);
+    }
+    top[top.length - 1] = top[0];
+    bot[bot.length - 1] = bot[0];
     ctx.fillStyle = 'rgba(4,6,11,0.97)';
     ctx.beginPath();
     ctx.moveTo(0, 0);
-    for (let x = 0; x <= w; x += 64) ctx.lineTo(x, 10 + r() * 26);
+    for (let i = 0; i < top.length; i++) ctx.lineTo(i * 64, top[i]);
     ctx.lineTo(w, 0);
     ctx.closePath();
     ctx.fill();
     ctx.beginPath();
     ctx.moveTo(0, h);
-    for (let x = 0; x <= w; x += 64) ctx.lineTo(x, h - (12 + r() * 30));
+    for (let i = 0; i < bot.length; i++) ctx.lineTo(i * 64, h - bot[i]);
     ctx.lineTo(w, h);
     ctx.closePath();
     ctx.fill();
     for (let i = 0; i < 4; i++) glowBlob(ctx, r() * w, h - 12 - r() * 20, 14, COLORS.teal, 0.18);
+    wrapBlendHorizontal(ctx, w, h, 48);
   });
 }
 
