@@ -33,7 +33,7 @@ concurrency:
 
 env:
   RELEASE_REF: release
-  PREVIEW_REF: claude/game-build-spec-qi770o
+  PREVIEW_REF: cursor/art-swap-runner-spikes-bg-74c7
 
 jobs:
   build:
