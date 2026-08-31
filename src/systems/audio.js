@@ -14,11 +14,19 @@
  * Mobile unlock: browsers and WebViews refuse to start an AudioContext outside a user
  * gesture, so `unlock()` is called from inside the Start screen's tap handler — the first
  * guaranteed gesture in the session.
+ *
+ * LEVELS. The gains below are not free-floating; they are a ladder, and the rule is that
+ * RARITY EARNS LOUDNESS. `step` fires 91 times a run and `crystal` 148, so they sit at the
+ * bottom; `win` and `powerup` fire once each and sit at the top. This was measured, not
+ * guessed — an instrumented autoplay logged every call, and before this ladder the ordering
+ * was inverted: `land` (49 a run) was louder than `powerup`, which is the biggest reward in
+ * the level. If you retune one of these, check it against the others rather than in
+ * isolation.
  */
 
 const SOUNDS = {
   /** Push-off: the moment the finger goes down. */
-  jump: { type: 'blip', freq: [430, 700], dur: 0.09, wave: 'triangle', gain: 0.16, noise: 0.05 },
+  jump: { type: 'blip', freq: [430, 700], dur: 0.09, wave: 'triangle', gain: 0.14, noise: 0.044 },
   /**
    * Footfall. By far the most-played sound in the game — measured at 3.2 a second of ground
    * time, about 160 in a clean run — so it is built to disappear into the background rather
@@ -28,17 +36,65 @@ const SOUNDS = {
    * here than anywhere: identical repeats at this rate are what turn a footstep into a
    * rattle.
    */
-  step: { type: 'thud', freq: [150, 68], dur: 0.06, wave: 'sine', gain: 0.055, noise: 0.035 },
+  step: { type: 'thud', freq: [150, 68], dur: 0.06, wave: 'sine', gain: 0.05, noise: 0.032 },
   /** Landing impact: separate sound, triggered on touchdown. */
-  land: { type: 'thud', freq: [180, 62], dur: 0.13, wave: 'sine', gain: 0.2, noise: 0.12 },
-  crystal: { type: 'chime', notes: [1180, 1760], dur: 0.14, gain: 0.1 },
-  checkpoint: { type: 'arp', notes: [523, 659, 880], step: 0.075, dur: 0.2, gain: 0.14 },
-  powerup: { type: 'arp', notes: [392, 523, 659, 784], step: 0.06, dur: 0.26, gain: 0.15 },
-  hit: { type: 'hit', freq: [260, 55], dur: 0.34, gain: 0.24, noise: 0.3 },
+  land: { type: 'thud', freq: [180, 62], dur: 0.13, wave: 'sine', gain: 0.14, noise: 0.084 },
+  /**
+   * The pickup. Three rising pentatonic bells with a slow bloom — see TWINKLE below for why
+   * it is built the way it is. The loudest thing in the game that fires more than 50 times
+   * a run, which is as high as the ladder lets it go.
+   */
+  crystal: { type: 'twinkle', grains: 3, spread: 0.075, decay: 0.45, gain: 0.074, wet: 0.48 },
+  checkpoint: { type: 'arp', notes: [523, 659, 880], step: 0.075, dur: 0.2, gain: 0.22 },
+  powerup: { type: 'arp', notes: [392, 523, 659, 784], step: 0.06, dur: 0.26, gain: 0.285 },
+  hit: { type: 'hit', freq: [260, 55], dur: 0.34, gain: 0.3, noise: 0.32 },
   /** Shield breaking: bright, glassy, falling — deliberately unlike the hit thud. */
-  shieldBreak: { type: 'shatter', notes: [1560, 1040, 690], step: 0.045, dur: 0.34, gain: 0.16, noise: 0.22 },
-  win: { type: 'arp', notes: [523, 659, 784, 1046, 1318], step: 0.11, dur: 0.5, gain: 0.18 }
+  shieldBreak: { type: 'shatter', notes: [1560, 1040, 690], step: 0.045, dur: 0.34, gain: 0.24, noise: 0.24 },
+  win: { type: 'arp', notes: [523, 659, 784, 1046, 1318], step: 0.11, dur: 0.5, gain: 0.3 }
 };
+
+/**
+ * D minor pentatonic, two octaves from D5. A pentatonic scale has no semitones and no
+ * tritone, so ANY two notes drawn from it are consonant together. That is the whole trick:
+ * with 246 crystals in the level and gaps as short as 17ms, pickups WILL land on top of each
+ * other, and this is what makes a pile-up shimmer instead of clash. The sound it replaced
+ * jittered by whole semitones, so two overlapping pickups could sit a minor 2nd apart.
+ */
+const PENTATONIC = [];
+for (const octave of [1, 2]) for (const step of [1, 1.1892, 1.3348, 1.4983, 1.7818]) {
+  PENTATONIC.push(587.33 * step * octave);
+}
+
+/**
+ * [multiple, amplitude, attack seconds] for one twinkle grain.
+ *
+ * The third field is the point. A grain on D6 puts its 2nd partial at 2350Hz and its 3rd at
+ * 3525Hz — both inside the 2-5kHz band human hearing is most sensitive to. Giving all three
+ * the same attack lands three simultaneous onsets in that band, which is what "piercing"
+ * actually is. Staggering them makes the tone bloom into brightness over ~95ms instead of
+ * arriving fully bright, the way a struck bell really behaves.
+ */
+const TWINKLE_PARTIALS = [[1, 1, 0.026], [2, 0.15, 0.06], [3, 0.02, 0.095]];
+
+/**
+ * A convolution reverb with no impulse-response file: exponentially decaying noise is the
+ * standard trick and is indistinguishable from a recorded hall at this length.
+ *
+ * Lives here rather than in music.js because it is an audio primitive and both need it —
+ * music.js imports it from here. Reverb is what lets a bright sound be bright without
+ * stabbing: dry and bright pierces, wet and bright is airy.
+ */
+export function makeReverbIR(ctx, seconds, decay) {
+  const len = Math.floor(ctx.sampleRate * seconds);
+  const buf = ctx.createBuffer(2, len, ctx.sampleRate);
+  for (let c = 0; c < 2; c++) {
+    const data = buf.getChannelData(c);
+    for (let i = 0; i < len; i++) {
+      data[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, decay);
+    }
+  }
+  return buf;
+}
 
 class AudioManager {
   constructor() {
@@ -59,8 +115,18 @@ class AudioManager {
     }
     this.ctx = new Ctx();
     this.master = this.ctx.createGain();
-    this.master.gain.value = 0.85;
+    // 1.0, not 0.85: trimming the music bed by 6dB took the whole mix down with it, and
+    // there is headroom for this — the full run peaks around -5dBFS.
+    this.master.gain.value = 1;
     this.master.connect(this.ctx.destination);
+
+    // One shared reverb send. Only the twinkle uses it today; a per-voice convolver would
+    // be wasteful and the impacts are meant to be dry.
+    this.wet = this.ctx.createGain();
+    this.wet.gain.value = 1;
+    const verb = this.ctx.createConvolver();
+    verb.buffer = makeReverbIR(this.ctx, 1.4, 2.6);
+    this.wet.connect(verb).connect(this.master);
 
     // Pre-baked noise, used by the impact sounds.
     const len = Math.floor(this.ctx.sampleRate * 0.4);
@@ -117,6 +183,24 @@ class AudioManager {
         if (def.noise) this.#noise(t, def.dur * 0.6, def.noise * volume, def.type === 'hit' ? 900 : 2400);
         break;
       }
+      case 'twinkle': {
+        // Start somewhere in the lower part of the scale, then step upward: rising reads as
+        // "gained something" where falling reads as losing it.
+        let rung = Math.floor(Math.random() * PENTATONIC.length * 0.6);
+        for (let g = 0; g < def.grains; g++) {
+          const at = t + (g * def.spread) / (def.grains - 1);
+          if (g > 0) {
+            rung = Math.min(PENTATONIC.length - 1, rung + 1 + Math.floor(Math.random() * 2));
+          }
+          // A few cents of wobble, so no two pickups are ever bit-identical.
+          const freq = PENTATONIC[rung] * pitch * (0.997 + Math.random() * 0.006);
+          const amp = def.gain * volume * (1 - g * 0.11);
+          for (const [mult, partialAmp, attack] of TWINKLE_PARTIALS) {
+            this.#bell(at, freq * mult, amp * partialAmp, attack, def.decay, def.wet);
+          }
+        }
+        break;
+      }
       case 'chime': {
         def.notes.forEach((n, i) => {
           const osc = this.ctx.createOscillator();
@@ -169,6 +253,34 @@ class AudioManager {
       default:
         break;
     }
+  }
+
+  /**
+   * One partial of one twinkle grain: a raised-cosine fade in, then a long exponential ring.
+   * The curve matters — a linear ramp still has a corner at the start, and at these
+   * frequencies a corner is audible as an edge.
+   */
+  #bell(at, freq, amp, attack, decay, wet) {
+    const osc = this.ctx.createOscillator();
+    osc.type = 'sine';
+    osc.frequency.value = freq;
+
+    const gain = this.ctx.createGain();
+    const steps = 32;
+    const curve = new Float32Array(steps);
+    for (let i = 0; i < steps; i++) curve[i] = amp * (0.5 - 0.5 * Math.cos((Math.PI * i) / (steps - 1)));
+    gain.gain.setValueCurveAtTime(curve, at, attack);
+    gain.gain.exponentialRampToValueAtTime(0.0001, at + decay);
+
+    osc.connect(gain);
+    gain.connect(this.master);
+    if (wet) {
+      const send = this.ctx.createGain();
+      send.gain.value = wet;
+      gain.connect(send).connect(this.wet);
+    }
+    osc.start(at);
+    osc.stop(at + decay + 0.02);
   }
 
   #noise(t, dur, gainValue, cutoff) {

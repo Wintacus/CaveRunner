@@ -349,7 +349,7 @@ export class GameScene extends Phaser.Scene {
       this.registry.set('score', this.score);
       this.sparkles.setParticleTint(COLORS.teal);
       this.sparkles.emitParticleAt(item.x, item.y, 6);
-      audio.play('crystal', { detune: Phaser.Math.Between(-1, 3) });
+      audio.play('crystal');
     } else if (item.def.type === 'powerup') {
       this.#setShield(true);
       this.sparkles.setParticleTint(COLORS.amber);

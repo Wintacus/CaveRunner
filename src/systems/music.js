@@ -24,12 +24,16 @@
  * the game loop, so a frame-rate dip cannot make the music stutter.
  */
 
+import { makeReverbIR } from './audio.js';
+
 const LOOP_S = 90;
 /** Eight chords over the loop, 11.25s each — slow enough that nothing repeats audibly. */
 const CHORD_S = LOOP_S / 8;
 /** Schedule this far ahead; the scheduler tick only has to beat this. */
 const LOOKAHEAD_S = 2.5;
 const TICK_MS = 400;
+/** Level of the whole bed against the sound effects. See the ramp in start(). */
+const BED_GAIN = 0.5;
 
 const midiToFreq = (n) => 440 * Math.pow(2, (n - 69) / 12);
 
@@ -66,23 +70,6 @@ const TONE = {
   shimmerOctave: 12,
   reverb: [3.2, 2.4]
 };
-
-/**
- * A convolution reverb with no impulse-response file: exponentially decaying noise is the
- * standard trick and is indistinguishable from a recorded hall at this length. Reverb is
- * most of what makes a pad "smooth" rather than "buzzy", so it is worth the node.
- */
-function makeReverbIR(ctx, seconds, decay) {
-  const len = Math.floor(ctx.sampleRate * seconds);
-  const buf = ctx.createBuffer(2, len, ctx.sampleRate);
-  for (let c = 0; c < 2; c++) {
-    const data = buf.getChannelData(c);
-    for (let i = 0; i < len; i++) {
-      data[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, decay);
-    }
-  }
-  return buf;
-}
 
 class Music {
   constructor() {
@@ -127,8 +114,11 @@ class Music {
     this.slot = 0;
     this.nextAt = ctx.currentTime + 0.15;
     // Fade in over a couple of bars rather than arriving; the run has already started.
+    // BED_GAIN, not 1: at full level the bed measured -12.3dBFS RMS and every sound effect
+    // sat at or below its *average*, so nothing had room to read. -6dB is what gives the
+    // effects somewhere to sit; the master gain was raised to compensate.
     this.out.gain.setValueAtTime(0, ctx.currentTime);
-    this.out.gain.linearRampToValueAtTime(1, ctx.currentTime + 6);
+    this.out.gain.linearRampToValueAtTime(BED_GAIN, ctx.currentTime + 6);
 
     this.#tick();
     this.timer = setInterval(() => this.#tick(), TICK_MS);
