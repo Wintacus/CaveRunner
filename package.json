@@ -17,7 +17,8 @@
     "smoke": "node tools/smoke-test.mjs",
     "autoplay": "node tools/autoplay.mjs",
     "test": "npm run build && node tools/run-tests.mjs",
-    "pacing": "node tools/pacing-report.mjs"
+    "pacing": "node tools/pacing-report.mjs",
+    "ci": "node tools/ci-status.mjs"
   },
   "dependencies": {
     "@capacitor/app": "^8.1.1",
