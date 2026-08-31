@@ -48,9 +48,36 @@ const SOUNDS = {
   checkpoint: { type: 'arp', notes: [523, 659, 880], step: 0.075, dur: 0.2, gain: 0.22 },
   powerup: { type: 'arp', notes: [392, 523, 659, 784], step: 0.06, dur: 0.26, gain: 0.285 },
   hit: { type: 'hit', freq: [260, 55], dur: 0.34, gain: 0.3, noise: 0.32 },
-  /** Shield breaking: bright, glassy, falling — deliberately unlike the hit thud. */
-  shieldBreak: { type: 'shatter', notes: [1560, 1040, 690], step: 0.045, dur: 0.34, gain: 0.24, noise: 0.24 },
-  win: { type: 'arp', notes: [523, 659, 784, 1046, 1318], step: 0.11, dur: 0.5, gain: 0.3 }
+  /**
+   * Shield breaking: bright, glassy, falling — deliberately unlike the hit thud. Sits BELOW
+   * `hit` on the ladder: this is the cushioned outcome, you were struck and survived, so it
+   * should not out-shout actual damage.
+   */
+  shieldBreak: { type: 'shatter', notes: [1560, 1040, 690], step: 0.045, dur: 0.34, gain: 0.138, noise: 0.138 },
+  /**
+   * The win. Built in the crystal's language — pentatonic, staggered-attack sine partials,
+   * heavy reverb — so it reads as the pickup's big brother rather than a jingle from another
+   * game. It replaced a C major arpeggio on triangle waves: C major is in the bed's
+   * progression so it was not wrong, but it was bright and arcade against music built to be
+   * moody, and it shared no vocabulary with anything else in the mix.
+   *
+   * Four bells rising D-F-A-D, settling onto a sustained D and the fifth above it — the same
+   * interval the bed's bass drone sits on, so the ending reads as the music completing
+   * rather than something interrupting it. It can afford the length: music.stop(2.5) fires
+   * on the same frame, so this has the mix to itself.
+   *
+   * Loudest thing in the game, and it should be: it fires once per run.
+   */
+  win: {
+    type: 'arrival',
+    degrees: [0, 1, 3, 5],
+    step: 0.155,
+    decay: 2,
+    gain: 0.21,
+    wet: 0.7,
+    // [ratio above D3, gain, start, attack, decay] — the fifth that holds underneath.
+    drones: [[1, 0.216, 0.45, 0.8, 4.4], [1.4983, 0.149, 0.55, 0.9, 4.3]]
+  }
 };
 
 /**
@@ -75,6 +102,9 @@ for (const octave of [1, 2]) for (const step of [1, 1.1892, 1.3348, 1.4983, 1.78
  * arriving fully bright, the way a struck bell really behaves.
  */
 const TWINKLE_PARTIALS = [[1, 1, 0.026], [2, 0.15, 0.06], [3, 0.02, 0.095]];
+
+/** The same idea, slower. The win has room to bloom where a 148-a-run pickup does not. */
+const ARRIVAL_PARTIALS = [[1, 1, 0.035], [2, 0.16, 0.08], [3, 0.03, 0.12]];
 
 /**
  * A convolution reverb with no impulse-response file: exponentially decaying noise is the
@@ -198,6 +228,20 @@ class AudioManager {
           for (const [mult, partialAmp, attack] of TWINKLE_PARTIALS) {
             this.#bell(at, freq * mult, amp * partialAmp, attack, def.decay, def.wet);
           }
+        }
+        break;
+      }
+      case 'arrival': {
+        def.degrees.forEach((deg, i) => {
+          const at = t + i * def.step;
+          const amp = def.gain * volume;
+          for (const [mult, partialAmp, attack] of ARRIVAL_PARTIALS) {
+            this.#bell(at, PENTATONIC[deg] * pitch * mult, amp * partialAmp, attack, def.decay, def.wet);
+          }
+        });
+        // D3 and the fifth above it, swelling in under the bells and holding past them.
+        for (const [ratio, gain, start, attack, decay] of def.drones) {
+          this.#bell(t + start, (PENTATONIC[0] / 4) * pitch * ratio, gain * volume, attack, decay, def.wet);
         }
         break;
       }
