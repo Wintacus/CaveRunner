@@ -16,7 +16,7 @@ import { Player } from '../objects/player.js';
 import { Director, parseEntities, findSpawn } from '../systems/director.js';
 import { Parallax } from '../systems/parallax.js';
 import { audio } from '../systems/audio.js';
-import { music, VARIANTS, DEFAULT_VARIANT } from '../systems/music.js';
+import { music } from '../systems/music.js';
 import { haptics } from '../systems/haptics.js';
 
 const STATE = { RUNNING: 'running', DYING: 'dying', WON: 'won' };
@@ -30,9 +30,8 @@ export class GameScene extends Phaser.Scene {
     // Idempotent, and that is the point: respawning does not touch it, and restarting the
     // level re-runs create() without the music noticing. A restart is the loudest possible
     // way to announce that the player just died.
-    // ?music=deep|lit|sparse picks a variant, ?music=off silences it.
-    const wanted = new URLSearchParams(location.search).get('music');
-    if (wanted !== 'off') music.start(audio, VARIANTS[wanted] ? wanted : DEFAULT_VARIANT);
+    // ?music=off silences it.
+    if (new URLSearchParams(location.search).get('music') !== 'off') music.start(audio);
 
     this.state = STATE.RUNNING;
     this.holdFromDevice = false;

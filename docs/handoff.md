@@ -362,9 +362,10 @@ the level's fairness guarantees.
   noticing. It stops in exactly one place, the win.
 
   Three variants were built to choose between — `deep` (Subnautica-leaning), `lit` (Ori),
-  `sparse` (Hollow Knight). **`deep` was chosen** and is the default; the other two are
-  still in `VARIANTS` behind `?music=lit|sparse` and could be deleted. `?music=off`
-  silences it, and `?perf=1` reports which is playing.
+  `sparse` (Hollow Knight). **`deep` was chosen**, and the other two have been deleted along
+  with the machinery that switched between them; the voicing is now a single `TONE` constant
+  and the git history is where the rejected two live if that judgement needs revisiting.
+  `?music=off` silences it, and `?perf=1` reports whether it is playing.
 - **The runner reads small and dark** against the painted cave. A rim outline traced from
   its alpha (teal, amber while shielded) fixed most of it — that outline is doing real work
   and should not be removed casually. If it still gets lost, scaling the sprite up or

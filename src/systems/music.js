@@ -50,52 +50,22 @@ const PROGRESSION = [
 ];
 
 /**
- * Three directions, deliberately far apart. Judged by ear on a phone, not by reading these
- * numbers — the point of three is that two of them are wrong and that is still useful.
+ * The voicing. Subnautica-leaning: deep, dark, almost no melody — pressure rather than tune.
+ * Chosen by ear on a phone from three candidates that were deliberately far apart; the other
+ * two (a brighter Ori-leaning one and a sparser Hollow Knight-leaning one) are gone, and the
+ * git history is where they live now if that judgement ever needs revisiting.
  */
-export const VARIANTS = {
-  /** Subnautica-leaning: deep, dark, almost no melody. Pressure rather than tune. */
-  deep: {
-    label: 'deep',
-    padGain: 0.16,
-    padCutoff: [420, 900],
-    padDetune: 7,
-    bassGain: 0.3,
-    airGain: 0.05,
-    shimmerGain: 0.05,
-    shimmerPerChord: 1,
-    shimmerOctave: 12,
-    reverb: [3.2, 2.4]
-  },
-  /** Ori-leaning: brighter and wider, with a celeste-like sparkle over the pad. */
-  lit: {
-    label: 'lit',
-    padGain: 0.13,
-    padCutoff: [900, 2100],
-    padDetune: 11,
-    bassGain: 0.18,
-    airGain: 0.03,
-    shimmerGain: 0.085,
-    shimmerPerChord: 4,
-    shimmerOctave: 24,
-    reverb: [3.8, 2.0]
-  },
-  /** Hollow Knight-leaning: mostly space. The quietest and the least busy. */
-  sparse: {
-    label: 'sparse',
-    padGain: 0.09,
-    padCutoff: [600, 1300],
-    padDetune: 5,
-    bassGain: 0.16,
-    airGain: 0.02,
-    shimmerGain: 0.1,
-    shimmerPerChord: 2,
-    shimmerOctave: 24,
-    reverb: [4.5, 2.6]
-  }
+const TONE = {
+  padGain: 0.16,
+  padCutoff: [420, 900],
+  padDetune: 7,
+  bassGain: 0.3,
+  airGain: 0.05,
+  shimmerGain: 0.05,
+  shimmerPerChord: 1,
+  shimmerOctave: 12,
+  reverb: [3.2, 2.4]
 };
-
-export const DEFAULT_VARIANT = 'deep';
 
 /**
  * A convolution reverb with no impulse-response file: exponentially decaying noise is the
@@ -119,7 +89,6 @@ class Music {
     this.ctx = null;
     this.out = null;
     this.playing = false;
-    this.variant = null;
     this.timer = null;
     this.nextAt = 0;
     this.slot = 0;
@@ -130,14 +99,11 @@ class Music {
    * Idempotent on purpose. Respawning and restarting the level both call through here, and
    * both must leave the music exactly where it was.
    */
-  start(audio, variantName = DEFAULT_VARIANT) {
+  start(audio) {
     if (this.playing) return;
     if (!audio || !audio.ctx || !audio.master) return;
-    const v = VARIANTS[variantName];
-    if (!v) return;
 
     this.ctx = audio.ctx;
-    this.variant = v;
 
     const ctx = this.ctx;
     this.out = ctx.createGain();
@@ -148,7 +114,7 @@ class Music {
     this.wet = ctx.createGain();
     this.wet.gain.value = 0.55;
     this.verb = ctx.createConvolver();
-    this.verb.buffer = makeReverbIR(ctx, v.reverb[0], v.reverb[1]);
+    this.verb.buffer = makeReverbIR(ctx, TONE.reverb[0], TONE.reverb[1]);
     this.wet.connect(this.verb).connect(this.out);
 
     this.dry = ctx.createGain();
@@ -196,7 +162,6 @@ class Music {
   }
 
   #scheduleChord(chord, at) {
-    const v = this.variant;
     // Chords overlap by design: each voice releases well past the next one's attack, so the
     // harmony crossfades instead of stepping.
     const hold = CHORD_S;
@@ -207,7 +172,7 @@ class Music {
     this.#voice({
       freq: midiToFreq(chord[0] - 24),
       type: 'sine',
-      gain: v.bassGain,
+      gain: TONE.bassGain,
       at,
       attack: 4,
       hold,
@@ -217,29 +182,29 @@ class Music {
 
     // Pad: every chord tone, two detuned saws each.
     for (const note of chord) {
-      for (const cents of [-v.padDetune, v.padDetune]) {
+      for (const cents of [-TONE.padDetune, TONE.padDetune]) {
         this.#voice({
           freq: midiToFreq(note),
           detune: cents,
           type: 'sawtooth',
-          gain: v.padGain / 2,
+          gain: TONE.padGain / 2,
           at,
           attack,
           hold,
           release,
-          cutoff: v.padCutoff
+          cutoff: TONE.padCutoff
         });
       }
     }
 
     // Shimmer: a few chord tones high up, placed off the beat so they never feel metrical.
-    for (let i = 0; i < v.shimmerPerChord; i++) {
-      const note = chord[Math.floor(Math.random() * chord.length)] + v.shimmerOctave;
+    for (let i = 0; i < TONE.shimmerPerChord; i++) {
+      const note = chord[Math.floor(Math.random() * chord.length)] + TONE.shimmerOctave;
       const offset = (0.15 + Math.random() * 0.7) * CHORD_S;
       this.#voice({
         freq: midiToFreq(note),
         type: 'triangle',
-        gain: v.shimmerGain,
+        gain: TONE.shimmerGain,
         at: at + offset,
         attack: 0.35,
         hold: 0.2,
@@ -288,7 +253,6 @@ class Music {
   /** Continuous filtered noise, barely audible. It is the room the rest of it sits in. */
   #startAir() {
     const ctx = this.ctx;
-    const v = this.variant;
     const len = Math.floor(ctx.sampleRate * 4);
     const buf = ctx.createBuffer(1, len, ctx.sampleRate);
     const data = buf.getChannelData(0);
@@ -311,7 +275,7 @@ class Music {
     lfo.connect(lfoGain).connect(filter.frequency);
 
     const amp = ctx.createGain();
-    amp.gain.value = v.airGain;
+    amp.gain.value = TONE.airGain;
 
     src.connect(filter).connect(amp);
     amp.connect(this.dry);
