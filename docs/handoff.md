@@ -276,6 +276,7 @@ src/objects/entities.js           hazards, creatures, pickups, markers (all pool
 src/systems/director.js           entity streaming + pooling + checkpoint rewind
 src/systems/parallax.js           three-layer background
 src/systems/audio.js              Web Audio SFX, synthesised, no files
+src/systems/music.js              the 90s music bed, also synthesised
 src/systems/haptics.js            Capacitor Haptics
 src/systems/lifecycle.js          gesture locking, safe areas, auto-pause, viewport fit
 src/systems/fullscreen.js         the full-screen toggle and its Add-to-Home-Screen fallback
@@ -349,8 +350,21 @@ the level's fairness guarantees.
 - **Draw calls are not batched.** Every sprite has its own generated texture, so nothing
   batches. Packing them into one atlas is the known optimisation if performance ever becomes
   a real constraint; it has not been needed so far.
-- **No music.** Sound effects only, all synthesised. This is the next thing the owner wants
-  to look at.
+- **Music is in and settled on.** A 90-second synthesised bed, four layers: a sine drone on
+  the chord root two octaves down, the chord as detuned saws through a lowpass that opens
+  and closes across each chord, sparse high chord tones with a long decay, and a whisper of
+  filtered noise for the room. Reverb is a convolver fed a procedurally generated impulse
+  response — decaying noise, no file. D natural minor, eight chords, cyclic rather than
+  cadential so the loop point lands mid-phrase and cannot be heard. Scheduled ahead on the
+  AudioContext clock with a 2.5s lookahead, so a frame-rate dip cannot make it stutter.
+  `music.start()` is idempotent, which is the whole of "continuous through death":
+  respawning never touches it and restarting the level re-runs `create()` without it
+  noticing. It stops in exactly one place, the win.
+
+  Three variants were built to choose between — `deep` (Subnautica-leaning), `lit` (Ori),
+  `sparse` (Hollow Knight). **`deep` was chosen** and is the default; the other two are
+  still in `VARIANTS` behind `?music=lit|sparse` and could be deleted. `?music=off`
+  silences it, and `?perf=1` reports which is playing.
 - **The runner reads small and dark** against the painted cave. A rim outline traced from
   its alpha (teal, amber while shielded) fixed most of it — that outline is doing real work
   and should not be removed casually. If it still gets lost, scaling the sprite up or
