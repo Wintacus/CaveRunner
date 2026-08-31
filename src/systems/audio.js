@@ -61,46 +61,51 @@ const SOUNDS = {
    * progression so it was not wrong, but it was bright and arcade against music built to be
    * moody, and it shared no vocabulary with anything else in the mix.
    *
-   * Four bells rising D-F-A-D, settling onto a sustained D and the fifth above it — the same
-   * interval the bed's bass drone sits on, so the ending reads as the music completing
-   * rather than something interrupting it. It can afford the length: music.stop(2.5) fires
-   * on the same frame, so this has the mix to itself.
+   * Six bells climbing two octaves of the scale, then a beat of space and a high D on top.
+   * That last note is the point: it lands on the tonic, two octaves above where the climb
+   * started, and it is the same resolution every crystal pickup reaches for — so the ending
+   * answers the question 148 pickups spent the run asking. A low D holds underneath on the
+   * bed's own root.
+   *
+   * Its attacks are slower than the crystal's (35/80/120ms against 26/60/95): a sound that
+   * fires once can afford to bloom where one firing 148 times cannot. It can afford the
+   * length too — music.stop(2.5) runs on the same frame, so this has the mix to itself.
    *
    * Loudest thing in the game, and it should be: it fires once per run.
    */
   win: {
-    type: 'arrival',
-    degrees: [0, 1, 3, 5],
-    step: 0.155,
-    decay: 2,
-    gain: 0.21,
-    wet: 0.7,
-    // [ratio above D3, gain, start, attack, decay] — the fifth that holds underneath.
-    drones: [[1, 0.216, 0.45, 0.8, 4.4], [1.4983, 0.149, 0.55, 0.9, 4.3]]
+    type: 'ascent',
+    degrees: [0, 1, 3, 5, 6, 8],
+    step: 0.13,
+    decay: 1.9,
+    gain: 0.155,
+    falloff: 0.05,
+    /** The resolution: a high tonic, held back a beat and rung longer than the climb. */
+    peak: { degree: 10, delay: 0.18, gain: 0.135, decay: 2.4 },
+    /** [ratio above D3, gain, start, attack, decay] — the root holding underneath. */
+    drones: [[1, 0.2, 0, 0.6, 4]],
+    wet: 0.66
   }
 };
 
 /**
- * D minor pentatonic, two octaves from D5. A pentatonic scale has no semitones and no
- * tritone, so ANY two notes drawn from it are consonant together. That is the whole trick:
- * with 246 crystals in the level and gaps as short as 17ms, pickups WILL land on top of each
- * other, and this is what makes a pile-up shimmer instead of clash. The sound it replaced
- * jittered by whole semitones, so two overlapping pickups could sit a minor 2nd apart.
+ * D minor pentatonic. A pentatonic scale has no semitones and no tritone, so ANY two notes
+ * drawn from it are consonant together. That is the whole trick: with 246 crystals in the
+ * level and gaps as short as 17ms, pickups WILL land on top of each other, and this is what
+ * makes a pile-up shimmer instead of clash. The sound it replaced jittered by whole
+ * semitones, so two overlapping pickups could sit a minor 2nd apart.
  */
-const PENTATONIC = [];
-for (const octave of [1, 2]) for (const step of [1, 1.1892, 1.3348, 1.4983, 1.7818]) {
-  PENTATONIC.push(587.33 * step * octave);
-}
+const PENTATONIC = [587.33, 698.46, 783.99, 879.87, 1046.5];   // D5 F5 G5 A5 C6
 
 /**
- * [multiple, amplitude, attack seconds] for one twinkle grain.
- *
- * The third field is the point. A grain on D6 puts its 2nd partial at 2350Hz and its 3rd at
- * 3525Hz — both inside the 2-5kHz band human hearing is most sensitive to. Giving all three
- * the same attack lands three simultaneous onsets in that band, which is what "piercing"
- * actually is. Staggering them makes the tone bloom into brightness over ~95ms instead of
- * arriving fully bright, the way a struck bell really behaves.
+ * Degree 0 is D5 and every 5 degrees climbs an octave, so a voice can reach as high as it
+ * needs without the table having to enumerate octaves nothing uses.
  */
+const pentatonic = (degree) => PENTATONIC[degree % 5] * Math.pow(2, Math.floor(degree / 5));
+
+/** Highest degree the pickup may reach: two octaves. The win goes above it; nothing else does. */
+const TWINKLE_TOP = 9;
+
 const TWINKLE_PARTIALS = [[1, 1, 0.026], [2, 0.15, 0.06], [3, 0.02, 0.095]];
 
 /** The same idea, slower. The win has room to bloom where a 148-a-run pickup does not. */
@@ -216,14 +221,14 @@ class AudioManager {
       case 'twinkle': {
         // Start somewhere in the lower part of the scale, then step upward: rising reads as
         // "gained something" where falling reads as losing it.
-        let rung = Math.floor(Math.random() * PENTATONIC.length * 0.6);
+        let rung = Math.floor(Math.random() * (TWINKLE_TOP + 1) * 0.6);
         for (let g = 0; g < def.grains; g++) {
           const at = t + (g * def.spread) / (def.grains - 1);
           if (g > 0) {
-            rung = Math.min(PENTATONIC.length - 1, rung + 1 + Math.floor(Math.random() * 2));
+            rung = Math.min(TWINKLE_TOP, rung + 1 + Math.floor(Math.random() * 2));
           }
           // A few cents of wobble, so no two pickups are ever bit-identical.
-          const freq = PENTATONIC[rung] * pitch * (0.997 + Math.random() * 0.006);
+          const freq = pentatonic(rung) * pitch * (0.997 + Math.random() * 0.006);
           const amp = def.gain * volume * (1 - g * 0.11);
           for (const [mult, partialAmp, attack] of TWINKLE_PARTIALS) {
             this.#bell(at, freq * mult, amp * partialAmp, attack, def.decay, def.wet);
@@ -231,17 +236,19 @@ class AudioManager {
         }
         break;
       }
-      case 'arrival': {
-        def.degrees.forEach((deg, i) => {
-          const at = t + i * def.step;
-          const amp = def.gain * volume;
+      case 'ascent': {
+        const ring = (at, degree, amp, decay) => {
           for (const [mult, partialAmp, attack] of ARRIVAL_PARTIALS) {
-            this.#bell(at, PENTATONIC[deg] * pitch * mult, amp * partialAmp, attack, def.decay, def.wet);
+            this.#bell(at, pentatonic(degree) * pitch * mult, amp * partialAmp, attack, decay, def.wet);
           }
+        };
+        def.degrees.forEach((degree, i) => {
+          ring(t + i * def.step, degree, def.gain * volume * (1 - i * def.falloff), def.decay);
         });
-        // D3 and the fifth above it, swelling in under the bells and holding past them.
+        const top = def.peak;
+        ring(t + def.degrees.length * def.step + top.delay, top.degree, top.gain * volume, top.decay);
         for (const [ratio, gain, start, attack, decay] of def.drones) {
-          this.#bell(t + start, (PENTATONIC[0] / 4) * pitch * ratio, gain * volume, attack, decay, def.wet);
+          this.#bell(t + start, (pentatonic(0) / 4) * pitch * ratio, gain * volume, attack, decay, def.wet);
         }
         break;
       }
