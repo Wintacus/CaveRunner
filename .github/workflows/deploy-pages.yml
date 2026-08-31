@@ -91,13 +91,13 @@ jobs:
             echo "::warning::the preview build failed, publishing the release alone"
           fi
 
-      - name: Configure Pages
-        uses: actions/configure-pages@v5
-        with:
-          # Turns Pages on for the repo if it isn't already, so this works without
-          # anyone having to visit repo settings first.
-          enablement: true
-
+      # No `actions/configure-pages` step on purpose. It was here only to switch Pages on
+      # for the repo, which is long done, and nothing consumed its outputs — this workflow
+      # sets DEPLOY_BASE by hand. It earned its removal during a GitHub incident: its
+      # download 429'd and then 503'd on three consecutive runs and took the whole deploy
+      # with it, while checkout and setup-node fetched fine. One less third-party action in
+      # the critical path of the public URL. If Pages' source is ever switched back to
+      # "deploy from a branch", deploy-pages will fail loudly and this is what to restore.
       - uses: actions/upload-pages-artifact@v3
         with:
           path: site
