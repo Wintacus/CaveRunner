@@ -76,11 +76,20 @@ export const SPRITE_SIZES = {};
  * File-backed replacement art. Loaded in PreloadScene under `key`, then stamped into the
  * matching KEYS canvas at the size the game already uses.
  */
+/**
+ * WebP rather than PNG. These are painted images, and PNG is lossless — the wrong tool for
+ * them by roughly an order of magnitude: 1736KB of PNG became 180KB of WebP with the
+ * dimensions untouched, which is most of a second of staring at "Loading..." on a phone.
+ * The sprites are encoded at higher quality than the backdrop because `rimOutline` traces
+ * their alpha, so artefacts there would show as a fuzzy outline rather than as fuzzy art.
+ *
+ * The PNG originals are in git at c637f93 if anything ever needs re-exporting.
+ */
 export const ART_FILES = {
-  runner: { key: 'art_runner', path: 'assets/art/runner-v4-gray-hat.png' },
-  spikes: { key: 'art_spikes', path: 'assets/art/spikes-rose.png' },
-  bgMid: { key: 'art_bg_mid', path: 'assets/art/background-v2.png' },
-  crystal: { key: 'art_crystal', path: 'assets/art/crystal-amber.png' }
+  runner: { key: 'art_runner', path: 'assets/art/runner-v4-gray-hat.webp' },
+  spikes: { key: 'art_spikes', path: 'assets/art/spikes-rose.webp' },
+  bgMid: { key: 'art_bg_mid', path: 'assets/art/background-v2.webp' },
+  crystal: { key: 'art_crystal', path: 'assets/art/crystal-amber.webp' }
 };
 
 
