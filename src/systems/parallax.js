@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import { GAME_WIDTH, GAME_HEIGHT, COLORS } from '../config/tuning.js';
-import { KEYS } from '../gfx/textures.js';
+import { KEYS, SPRITE_SIZES } from '../gfx/textures.js';
 
 /**
  * Three depth layers of cave, scrolled at different rates against the camera to fake
@@ -9,21 +9,30 @@ import { KEYS } from '../gfx/textures.js';
  * The layers are screen-fixed tile sprites (scrollFactor 0) whose tilePosition is driven
  * manually — that gives exact control over each layer's rate and keeps a 850-tile level
  * from needing 850 tiles of background art.
+ *
+ * The painted mid layer is a mirrored power-of-two tile (see textures.js) so a unique
+ * 960x540 scene can wrap without a vertical seam. Vertical wrap of that painting would
+ * flash the floor into the ceiling, so its Y offset stays locked.
  */
 export class Parallax {
   constructor(scene) {
-    const layer = (key, depth, factor) => ({
-      sprite: scene.add
+    const layer = (key, depth, factor, { lockY = false } = {}) => {
+      const sprite = scene.add
         .tileSprite(0, 0, GAME_WIDTH, GAME_HEIGHT, key)
         .setOrigin(0, 0)
         .setScrollFactor(0)
-        .setDepth(depth),
-      factor
-    });
+        .setDepth(depth);
+      const size = SPRITE_SIZES[key];
+      if (size && size[1] && size[1] !== GAME_HEIGHT) {
+        const s = GAME_HEIGHT / size[1];
+        sprite.setTileScale(s, s);
+      }
+      return { sprite, factor, lockY };
+    };
 
     this.layers = [
       layer(KEYS.bgFar, -40, 0.1), // distant cave wall
-      layer(KEYS.bgMid, -30, 0.32), // mid-ground rock formations
+      layer(KEYS.bgMid, -30, 0.32, { lockY: true }), // painted cavern
       layer(KEYS.bgNear, 26, 0.66) // foreground rock framing the top and bottom
     ];
 
@@ -47,9 +56,9 @@ export class Parallax {
   }
 
   update(camera) {
-    for (const { sprite, factor } of this.layers) {
+    for (const { sprite, factor, lockY } of this.layers) {
       sprite.tilePositionX = camera.scrollX * factor;
-      sprite.tilePositionY = camera.scrollY * factor * 0.4;
+      sprite.tilePositionY = lockY ? 0 : camera.scrollY * factor * 0.4;
     }
   }
 }

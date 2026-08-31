@@ -1,15 +1,15 @@
 /**
- * Procedural art.
+ * Runtime textures.
  *
- * Every sprite in the game is drawn here into a canvas texture at boot. That keeps the
- * build asset-free while still delivering the bioluminescent look: dark stone silhouettes
- * with glowing rim light.
+ * Most sprites are still drawn here into a canvas texture at boot (dark stone silhouettes
+ * with glowing rim light). Three keys are stamped from files in `public/assets/art/` so the
+ * look can change without touching hitboxes.
  *
- * ART SWAP POINT — when AI-generated sprite sheets arrive (transparent PNG, grid-based,
- * rows = animation states, columns = frames), delete the matching `make*` call below and
- * load the atlas in PreloadScene instead. `KEYS` lists every texture key the game uses and
- * `SPRITE_SIZES` gives the pixel size of each one, so replacement art can be produced to
- * match.
+ * ART SWAP POINT — file-backed keys (see `ART_FILES`) are stamped into existing canvas
+ * sizes at boot so hitboxes do not change: runner (jump/shield variants of the same
+ * silhouette), spike + stalagmite, pickup crystal, and the mid parallax layer. Bats,
+ * spiders and everything else stay procedural. Further swaps: load a PNG in PreloadScene,
+ * add it to `ART_FILES`, and stamp it from the matching `make*` below.
  *
  * SPRITE_SIZES is filled in by `canvasTexture` as the textures are drawn rather than
  * maintained by hand. The hand-written version had drifted badly — six of its ten entries
@@ -22,8 +22,10 @@ import { COLORS } from '../config/tuning.js';
 
 export const KEYS = {
   player: 'player',
+  playerRun: 'player_run',
   playerJump: 'player_jump',
   playerShield: 'player_shield',
+  playerRunShield: 'player_run_shield',
   playerJumpShield: 'player_jump_shield',
   shieldRing: 'shield_ring',
   shieldShard: 'shield_shard',
@@ -53,6 +55,17 @@ export const KEYS = {
  */
 export const SPRITE_SIZES = {};
 
+/**
+ * File-backed replacement art. Loaded in PreloadScene under `key`, then stamped into the
+ * matching KEYS canvas at the size the game already uses.
+ */
+export const ART_FILES = {
+  runner: { key: 'art_runner', path: 'assets/art/runner-v4-gray-hat.png' },
+  spikes: { key: 'art_spikes', path: 'assets/art/spikes-rose.png' },
+  bgMid: { key: 'art_bg_mid', path: 'assets/art/background-v2.png' },
+  crystal: { key: 'art_crystal', path: 'assets/art/crystal-amber.png' }
+};
+
 
 const hex = (n) => `#${n.toString(16).padStart(6, '0')}`;
 const rgba = (n, a) => {
@@ -72,6 +85,80 @@ function canvasTexture(scene, key, w, h, draw) {
   draw(ctx, w, h);
   tex.refresh();
   return tex;
+}
+
+function sourceImage(scene, key) {
+  if (!scene.textures.exists(key)) return null;
+  const img = scene.textures.get(key).getSourceImage();
+  return img && img.width ? img : null;
+}
+
+/** Scale `img` to fit `box`, bottom-aligned so grounded sprites keep their feet. */
+function stampContained(ctx, img, x, y, boxW, boxH) {
+  if (!img) return false;
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'high';
+  const scale = Math.min(boxW / img.width, boxH / img.height);
+  const dw = img.width * scale;
+  const dh = img.height * scale;
+  ctx.drawImage(img, x + (boxW - dw) / 2, y + (boxH - dh), dw, dh);
+  return true;
+}
+
+/**
+ * Stamp the runner still with a squash/lean baked into the canvas. The game object
+ * stays at scale 1 so the Arcade hitbox does not pulse with the gait.
+ */
+function stampRunnerArt(ctx, img, w, h, { squashX = 1, squashY = 1, tilt = 0 } = {}) {
+  const boxX = 2;
+  const boxY = 2;
+  const boxW = w + 12;
+  const boxH = h + 12;
+  ctx.save();
+  const px = boxX + boxW / 2;
+  const py = boxY + boxH;
+  ctx.translate(px, py);
+  ctx.rotate(tilt);
+  ctx.scale(squashX, squashY);
+  ctx.translate(-px, -py);
+  stampContained(ctx, img, boxX, boxY, boxW, boxH);
+  ctx.restore();
+}
+
+/** Cover-draw `img` into a box (may crop). Used for the mid parallax tile. */
+function stampCover(ctx, img, x, y, boxW, boxH) {
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'high';
+  const scale = Math.max(boxW / img.width, boxH / img.height);
+  const dw = img.width * scale;
+  const dh = img.height * scale;
+  ctx.drawImage(img, x + (boxW - dw) / 2, y + (boxH - dh) / 2, dw, dh);
+}
+
+/**
+ * Cross-fade the left `blend` pixels onto the right edge so a GL_REPEAT wrap is seamless.
+ * The source PNG is left untouched; this only runs on the runtime canvas.
+ */
+function wrapBlendHorizontal(ctx, w, h, blend) {
+  const slice = Math.min(blend, w >> 2);
+  if (slice < 2) return;
+  const tmp = document.createElement('canvas');
+  tmp.width = slice;
+  tmp.height = h;
+  tmp.getContext('2d').drawImage(ctx.canvas, 0, 0, slice, h, 0, 0, slice, h);
+  for (let i = 0; i < slice; i++) {
+    ctx.globalAlpha = i / (slice - 1);
+    ctx.drawImage(tmp, i, 0, 1, h, w - slice + i, 0, 1, h);
+  }
+  ctx.globalAlpha = 1;
+}
+
+/** Glow behind opaque art, never composited through it (that crushed the gray hat). */
+function glowBehind(ctx, x, y, radius, colour, strength) {
+  ctx.save();
+  ctx.globalCompositeOperation = 'destination-over';
+  glowBlob(ctx, x, y, radius, colour, strength);
+  ctx.restore();
 }
 
 /** Soft radial glow behind a shape — the core of the bioluminescent look. */
@@ -110,18 +197,30 @@ function polygon(ctx, points) {
 /**
  * @param {object} opts
  * @param {boolean} opts.crouch  mid-jump tuck
+ * @param {number}  opts.gait    0 = contact (squash), 1 = passing (stretch + lean)
  * @param {number}  opts.rim     rim-light colour; amber marks the shield as a *secondary*
  *                               cue reinforcing the bubble, never as the only signal
  */
-function makePlayer(scene, key, { crouch = false, rim = COLORS.teal } = {}) {
+function makePlayer(scene, key, { crouch = false, gait = 0, rim = COLORS.teal } = {}) {
   const [w, h] = [30, 42];
   canvasTexture(scene, key, w + 16, h + 16, (ctx) => {
     const ox = 8;
     const oy = 8;
+    const art = sourceImage(scene, ART_FILES.runner.key);
+    const step = gait
+      ? { squashX: 0.94, squashY: 1.1, tilt: 0.14 }
+      : { squashX: 1.08, squashY: 0.9, tilt: -0.05 };
+    if (art) {
+      if (crouch) stampRunnerArt(ctx, art, w, h, { squashX: 1.06, squashY: 0.88, tilt: 0.08 });
+      else stampRunnerArt(ctx, art, w, h, step);
+      // Destination-over so the gray hat cannot be multiplied into the rim glow.
+      glowBehind(ctx, ox + w / 2, oy + h / 2, 22, rim, rim === COLORS.amber ? 0.55 : 0.28);
+      return;
+    }
     glowBlob(ctx, ox + w / 2, oy + h / 2, 22, rim, 0.5);
 
     // Body
-    const bodyH = crouch ? h - 6 : h;
+    const bodyH = crouch ? h - 6 : h - (gait ? 0 : 3);
     const bodyY = oy + (h - bodyH);
     ctx.fillStyle = hex(0x121722);
     roundedRect(ctx, ox + 2, bodyY, w - 4, bodyH, 9);
@@ -145,11 +244,12 @@ function makePlayer(scene, key, { crouch = false, rim = COLORS.teal } = {}) {
     roundedRect(ctx, ox + w - 13, bodyY + 7, 9, 6, 3);
     ctx.fill();
 
-    // Feet
+    // Feet — the old gait. Offset them on the passing frame so a still does not slide.
+    const footShift = gait ? 4 : 0;
     ctx.fillStyle = rgba(rim, 0.55);
-    roundedRect(ctx, ox + 4, oy + h - 5, 9, 5, 2);
+    roundedRect(ctx, ox + 4 + footShift, oy + h - 5, 9, 5, 2);
     ctx.fill();
-    roundedRect(ctx, ox + w - 13, oy + h - 5, 9, 5, 2);
+    roundedRect(ctx, ox + w - 13 - footShift, oy + h - 5, 9, 5, 2);
     ctx.fill();
   });
 }
@@ -265,6 +365,12 @@ function makeSpider(scene, key, spread) {
 // ---------------------------------------------------------------------------
 function makeCrystal(scene) {
   canvasTexture(scene, KEYS.crystal, 36, 42, (ctx) => {
+    const art = sourceImage(scene, ART_FILES.crystal.key);
+    if (art) {
+      stampContained(ctx, art, 0, 0, 36, 42);
+      glowBehind(ctx, 18, 21, 17, COLORS.amber, 0.7);
+      return;
+    }
     glowBlob(ctx, 18, 21, 17, COLORS.teal, 0.75);
     polygon(ctx, [
       [18, 4],
@@ -376,6 +482,12 @@ function makeStalagmite(scene) {
   const w = 48;
   const h = 68;
   canvasTexture(scene, KEYS.stalagmite, w, h, (ctx) => {
+    const art = sourceImage(scene, ART_FILES.spikes.key);
+    if (art) {
+      glowBlob(ctx, w / 2, 14, 20, COLORS.rose, 0.35);
+      stampContained(ctx, art, 0, 0, w, h);
+      return;
+    }
     glowBlob(ctx, w / 2, 14, 20, COLORS.rose, 0.4);
     polygon(ctx, [
       [w / 2 - 15, h],
@@ -422,6 +534,12 @@ function makeSpike(scene) {
   const w = 32;
   const h = 30;
   canvasTexture(scene, KEYS.spike, w, h, (ctx) => {
+    const art = sourceImage(scene, ART_FILES.spikes.key);
+    if (art) {
+      glowBlob(ctx, w / 2, h - 6, 16, COLORS.rose, 0.3);
+      stampContained(ctx, art, 0, 0, w, h);
+      return;
+    }
     glowBlob(ctx, w / 2, h - 6, 16, COLORS.rose, 0.35);
     ctx.fillStyle = hex(0x232a3a);
     ctx.strokeStyle = rgba(COLORS.rose, 0.85);
@@ -532,9 +650,13 @@ function rng(seed) {
 
 function makeParallax(scene, height) {
   const W = 512;
+  // TileSprite + WebGL GL_REPEAT needs power-of-two sources. 540 is NPOT and Phaser
+  // would stretch each layer into a 1024-tall pad, which is the dark-rectangle bug.
+  const H = 512;
+  void height;
 
   // Far: the back wall of the cavern, plus a haze of distant spores.
-  canvasTexture(scene, KEYS.bgFar, W, height, (ctx, w, h) => {
+  canvasTexture(scene, KEYS.bgFar, W, H, (ctx, w, h) => {
     const g = ctx.createLinearGradient(0, 0, 0, h);
     g.addColorStop(0, '#080b14');
     g.addColorStop(0.55, '#0d1220');
@@ -559,10 +681,31 @@ function makeParallax(scene, height) {
       ]);
       ctx.fill();
     }
+    wrapBlendHorizontal(ctx, w, h, 48);
   });
 
-  // Mid: rock formations rising from the floor with glowing fungus shelves.
-  canvasTexture(scene, KEYS.bgMid, W, height, (ctx, w, h) => {
+  // Mid: painted cavern. The PNG is a unique 960x540 scene, not a tile. Wrapping it as a
+  // TileSprite (even a POT, wrap-blended one) still puts a full-height seam on screen
+  // because the left and right edges of the painting do not match. Mirror the cover-stamp
+  // so the wrap is a reflection — seamless, PNG unchanged.
+  const midArt = sourceImage(scene, ART_FILES.bgMid.key);
+  if (midArt) {
+    const midW = 2048;
+    const midH = 512;
+    canvasTexture(scene, KEYS.bgMid, midW, midH, (ctx, w, h) => {
+      const half = w >> 1;
+      stampCover(ctx, midArt, 0, 0, half, h);
+      const tmp = document.createElement('canvas');
+      tmp.width = half;
+      tmp.height = h;
+      tmp.getContext('2d').drawImage(ctx.canvas, 0, 0, half, h, 0, 0, half, h);
+      ctx.save();
+      ctx.translate(w, 0);
+      ctx.scale(-1, 1);
+      ctx.drawImage(tmp, 0, 0);
+      ctx.restore();
+    });
+  } else canvasTexture(scene, KEYS.bgMid, W, H, (ctx, w, h) => {
     const r = rng(21);
     ctx.fillStyle = 'rgba(13,18,30,0.95)';
     for (let i = 0; i < 6; i++) {
@@ -595,30 +738,41 @@ function makeParallax(scene, height) {
   });
 
   // Near: dark foreground rock framing the top and bottom of the screen.
-  canvasTexture(scene, KEYS.bgNear, W, height, (ctx, w, h) => {
+  canvasTexture(scene, KEYS.bgNear, W, H, (ctx, w, h) => {
     const r = rng(99);
+    const top = [];
+    const bot = [];
+    for (let x = 0; x <= w; x += 64) {
+      top.push(10 + r() * 26);
+      bot.push(12 + r() * 30);
+    }
+    top[top.length - 1] = top[0];
+    bot[bot.length - 1] = bot[0];
     ctx.fillStyle = 'rgba(4,6,11,0.97)';
     ctx.beginPath();
     ctx.moveTo(0, 0);
-    for (let x = 0; x <= w; x += 64) ctx.lineTo(x, 10 + r() * 26);
+    for (let i = 0; i < top.length; i++) ctx.lineTo(i * 64, top[i]);
     ctx.lineTo(w, 0);
     ctx.closePath();
     ctx.fill();
     ctx.beginPath();
     ctx.moveTo(0, h);
-    for (let x = 0; x <= w; x += 64) ctx.lineTo(x, h - (12 + r() * 30));
+    for (let i = 0; i < bot.length; i++) ctx.lineTo(i * 64, h - bot[i]);
     ctx.lineTo(w, h);
     ctx.closePath();
     ctx.fill();
     for (let i = 0; i < 4; i++) glowBlob(ctx, r() * w, h - 12 - r() * 20, 14, COLORS.teal, 0.18);
+    wrapBlendHorizontal(ctx, w, h, 48);
   });
 }
 
 /** Build every runtime texture. Called once, from PreloadScene. */
 export function generateTextures(scene, viewHeight) {
   makePlayer(scene, KEYS.player);
+  makePlayer(scene, KEYS.playerRun, { gait: 1 });
   makePlayer(scene, KEYS.playerJump, { crouch: true });
   makePlayer(scene, KEYS.playerShield, { rim: COLORS.amber });
+  makePlayer(scene, KEYS.playerRunShield, { gait: 1, rim: COLORS.amber });
   makePlayer(scene, KEYS.playerJumpShield, { crouch: true, rim: COLORS.amber });
   makeShieldRing(scene);
   makeShieldShard(scene);

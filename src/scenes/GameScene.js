@@ -40,7 +40,9 @@ export class GameScene extends Phaser.Scene {
     this.map = map;
 
     this.parallax = new Parallax(this);
-    map.createLayer('decor', tileset).setDepth(-20).setAlpha(0.62); // sits behind the play space
+    // Decor is non-colliding wall veins/rock. Tile bodies are transparent (only the glow
+    // draws) so they cannot paint a gray rectangle over the cave.
+    map.createLayer('decor', tileset).setDepth(-20).setAlpha(0.85);
     this.ground = map.createLayer('ground', tileset).setDepth(0);
     this.ground.setCollisionByProperty({ collides: true });
 
