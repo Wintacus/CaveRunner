@@ -15,9 +15,22 @@ const TILE = 32;
 const COLS = 4;
 const ROWS = 2;
 
-const STONE_DARK = [26, 31, 44];
-const STONE_MID = [40, 47, 64];
-const STONE_LIGHT = [58, 68, 90];
+/**
+ * Rock palette, tinted to belong to the painted cavern behind it.
+ *
+ * These were near-neutral slate — [26,31,44] / [40,47,64] / [58,68,90], barely 25%
+ * saturated. That was right when the background was procedural and equally muted, but the
+ * painted backdrop is saturated cyan, and against it the floor read as a flat gray slab
+ * with the pits cut out of it as hard-edged rectangles. Same hue family as the painting,
+ * roughly double the saturation.
+ *
+ * Deliberately still dark. The floor has to stay well below the background in value or the
+ * platform edges stop reading, and edge-reading is what the player jumps by — the teal moss
+ * lip on the walkable surface is the cue, and it needs something dark to sit against.
+ */
+const STONE_DARK = [17, 29, 51];
+const STONE_MID = [29, 51, 82];
+const STONE_LIGHT = [47, 81, 122];
 const TEAL = [63, 224, 200];
 const VIOLET = [160, 108, 255];
 

@@ -106,19 +106,27 @@ function stampContained(ctx, img, x, y, boxW, boxH) {
 }
 
 /**
- * Stamp the runner still with a squash/lean baked into the canvas. The game object
- * stays at scale 1 so the Arcade hitbox does not pulse with the gait.
+ * Stamp the runner still with a squash, lift and lean baked into the canvas. The game
+ * object stays at scale 1 so the Arcade hitbox does not pulse with the gait.
+ *
+ * `lift` is what makes a run out of a single static drawing. The source art is one PNG —
+ * there is no sprite sheet and no separable legs — so the only honest way to suggest
+ * footfalls is to move the whole body the way a body moves when it runs: up on the
+ * passing frame, down and compressed on contact. Rotation was tried here first and is the
+ * one thing that does *not* read as a gait; a character swinging about its feet reads as
+ * rocking on the spot. Everything is baked into the canvas rather than applied to the
+ * sprite so the physics body never sees any of it.
  */
-function stampRunnerArt(ctx, img, w, h, { squashX = 1, squashY = 1, tilt = 0 } = {}) {
+function stampRunnerArt(ctx, img, w, h, { squashX = 1, squashY = 1, tilt = 0, lift = 0 } = {}) {
   const boxX = 2;
-  const boxY = 2;
+  const boxY = 2 - lift;
   const boxW = w + 12;
   const boxH = h + 12;
   ctx.save();
   const px = boxX + boxW / 2;
   const py = boxY + boxH;
   ctx.translate(px, py);
-  ctx.rotate(tilt);
+  if (tilt) ctx.rotate(tilt);
   ctx.scale(squashX, squashY);
   ctx.translate(-px, -py);
   stampContained(ctx, img, boxX, boxY, boxW, boxH);
@@ -207,9 +215,12 @@ function makePlayer(scene, key, { crouch = false, gait = 0, rim = COLORS.teal } 
     const ox = 8;
     const oy = 8;
     const art = sourceImage(scene, ART_FILES.runner.key);
+    // Passing frame rises and lengthens; contact frame drops and compresses. No tilt: see
+    // stampRunnerArt. The two differ by 3px of height and ~7% of body shape, which is small
+    // on a still and unmistakable at 5 strides a second.
     const step = gait
-      ? { squashX: 0.94, squashY: 1.1, tilt: 0.14 }
-      : { squashX: 1.08, squashY: 0.9, tilt: -0.05 };
+      ? { squashX: 0.97, squashY: 1.05, lift: 3 }
+      : { squashX: 1.04, squashY: 0.96, lift: 0 };
     if (art) {
       if (crouch) stampRunnerArt(ctx, art, w, h, { squashX: 1.06, squashY: 0.88, tilt: 0.08 });
       else stampRunnerArt(ctx, art, w, h, step);

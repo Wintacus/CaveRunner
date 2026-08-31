@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { GAME_WIDTH, GAME_HEIGHT, COLORS } from '../config/tuning.js';
+import { GAME_WIDTH, GAME_HEIGHT, COLORS, RUN_CYCLE_MS } from '../config/tuning.js';
 import { KEYS } from '../gfx/textures.js';
 import { audio } from '../systems/audio.js';
 import { Parallax } from '../systems/parallax.js';
@@ -45,8 +45,11 @@ export class MenuScene extends Phaser.Scene {
     this.add.image(cx - 168, GAME_HEIGHT * 0.36, KEYS.crystal).setScale(1.3);
     const runner = this.add.image(cx + 172, GAME_HEIGHT * 0.36, KEYS.player).setScale(1.3);
     this.tweens.add({ targets: runner, y: '-=14', duration: 900, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
+    // Half a stride: two footfalls per cycle, same as in game. These used to disagree —
+    // the menu ran at 140ms against the game's 220ms — so the runner changed speed the
+    // moment you started playing.
     this.time.addEvent({
-      delay: 140,
+      delay: RUN_CYCLE_MS / 2,
       loop: true,
       callback: () => {
         runner.setTexture(runner.texture.key === KEYS.player ? KEYS.playerRun : KEYS.player);
