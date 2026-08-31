@@ -29,15 +29,22 @@ jump. One complete hand-crafted level of about 70 seconds.
   quality, rather than a rough prototype. Version `0.1.0`.
 - **Stack:** Phaser 3.90 with Arcade Physics, a real Tiled `.tmj` level, Vite for the web
   build, Capacitor configured for iOS/Android (native projects not committed).
-- **Deployed:** GitHub Pages at `https://wintacus.github.io/CaveRunner/`, published from
-  `main` by a GitHub Actions workflow. Development happens on a feature branch and is
-  merged to `main` to release.
+- **Deployed:** GitHub Pages, two builds assembled in one workflow run.
+  `https://wintacus.github.io/CaveRunner/` is the public URL, built from the `release`
+  branch, which moves only when someone deliberately moves it — so work in progress never
+  reaches anyone handed the link. `https://wintacus.github.io/CaveRunner/preview/` is built
+  from the development branch and is where the owner playtests. Pages serves one artifact
+  per site, hence one run for both. Deploys fire only from `main`, which holds nothing but
+  the workflow.
 - **Testing reality:** the owner plays on a phone, from the deployed build, and has no local
   development environment. "Try it locally" is never an option for them. Changes only reach
   them when `main` is deployed.
 
-Two debug flags are live in the deployed build: `?debug=1` draws Arcade physics bodies plus
-a haptics readout, and `?perf=1` shows an fps / frame-time / renderer readout.
+Two debug flags are live in the deployed build. `?debug=1` draws Arcade physics bodies plus
+a haptics readout. `?perf=1` shows fps, frame time and renderer; whether the device supports
+the Fullscreen API; and, on tap, a marker at the touch point in game coordinates alongside
+the pause button's real hit area. Both exist because the owner has no devtools — having the
+game report what their phone actually does has repeatedly beaten reasoning about it.
 
 ---
 
@@ -68,6 +75,7 @@ Everything that decides how the game feels is in `src/config/tuning.js`. Verbati
 // Movement
 RUN_SPEED = 370          // px/s, constant. 300 -> 330 -> 370 over two device tests.
 MAX_DELTA_MS = 50        // delta cap; a 20fps floor for resuming from background
+STRIDE_MS = 340          // one stride: drives the ground squash cycle and the step sound
 
 // Jump — tap-and-hold, variable height, asymmetric gravity
 JUMP_IMPULSE = 560       // instant upward velocity on press-down
@@ -126,6 +134,14 @@ grow with it.
 
 Checkpoints at tiles 166, 376 and 648. The one shield power-up is at tile 386, immediately
 after checkpoint 2 and immediately before the hardest section. Goal at tile 812.
+
+That power-up placement is load-bearing and easy to miss. `director.rewindTo` un-takes every
+def at or past the checkpoint, so the shield is back on the ground for *every* respawn into
+checkpoint 2, not just the first — dying there hands you a fresh extra hit at the mouth of
+the hardest stretch, however many times you do it. It is what pays for the widest checkpoint
+gap in the level (23.5s, 16 hazards). A fourth checkpoint was added there to halve that gap,
+measured on replay time alone, and had to be reverted: the section already gifts a life, and
+cutting the run-back as well left nothing at stake.
 
 **Contents:** 246 crystals, 15 bats, 9 spiders, 12 static hazards (8 stalagmites, a 3-tile
 spike run, 1 stalactite), 3 checkpoints, 1 power-up, 1 goal, 2 instruction signs and the
@@ -222,12 +238,25 @@ The rules it enforces:
   hazard
 - **Bat clearance** — a bat meant to be run under must leave at least 20px of daylight;
   below that it is a graze rather than a designed near miss
-- Checkpoint, power-up and goal counts, plus a pacing report per segment
+- **Replay cost, not checkpoint count** — no hazard may sit more than 20s of running past
+  the last checkpoint, or 26s if a power-up respawns inside that gap. It replaced an
+  "expected 3 checkpoints" assertion, which was a number that said nothing and passed
+  happily while the longest gap in the level sat on top of its densest stretch. The power-up
+  allowance is not a fudge: what a death costs is the run back *minus whatever respawning
+  hands you*
+- **Checkpoint clearance, measured forwards only** — `#respawn` places the player exactly on
+  the checkpoint facing right, so a hazard two tiles behind it is scenery and one two tiles
+  ahead is a death with no time to read it
+- Power-up and goal counts, plus a pacing report per segment
 
-There is also a headless smoke test (boots the real game in Chromium, fails on any console
-error, and asserts that all four markers are impossible to jump over and that all 23 sprite
-sizes match their textures) and a full autoplay run (a scripted bot that plays the entire
-level frame by frame; currently wins in 69.7s with no deaths).
+There is also a headless smoke test — boots the real game in Chromium and fails on any
+console error or 4xx. It asserts that every checkpoint and goal marker is impossible to jump
+over (the list is read from the level rather than hand-copied, after a hand-copied one
+silently skipped a new marker while still reporting a pass), that all 39 sprite sizes match
+their textures, and that the full-screen button is present, correctly placed, and cannot
+leak a tap into the game as a jump — including under a simulated browser with no Fullscreen
+API, which is the case that actually shipped broken. Plus a full autoplay run: a scripted
+bot that plays the entire level frame by frame, currently winning in 69.7s with no deaths.
 
 **The limit of all this:** the bot predicts creature positions perfectly, so its zero deaths
 means "completable", never "fair" and never "fun". Every genuinely interesting bug in this
@@ -249,9 +278,10 @@ src/systems/parallax.js           three-layer background
 src/systems/audio.js              Web Audio SFX, synthesised, no files
 src/systems/haptics.js            Capacitor Haptics
 src/systems/lifecycle.js          gesture locking, safe areas, auto-pause, viewport fit
+src/systems/fullscreen.js         the full-screen toggle and its Add-to-Home-Screen fallback
 src/physics/jump-model.js         the jump arc, shared by game and validator
 src/physics/creature-motion.js    bat and spider motion, shared the same way
-src/gfx/textures.js               procedural art, generated at boot
+src/gfx/textures.js               textures: procedural, plus four stamped image files
 src/level/level1.js               the hand-authored level
 tools/                            asset builders, level validator, test harnesses
 ```
@@ -265,10 +295,21 @@ drifted — the game eased the retract on a cosine curve while the validator use
 one, disagreeing by about 10px. Checks that decide fairness are measured in tens of pixels,
 so that mattered.
 
-**Everything is procedural.** All sprites, the parallax layers and the tileset are drawn to
-canvas at boot; the sound effects are synthesised through Web Audio. There are no binary
-art or audio assets. `SPRITE_SIZES` in `textures.js` is populated as the textures are drawn
-and gives the size a replacement PNG would need to be.
+**Mostly procedural, with four painted files.** Bats, spiders, the tileset, the far and near
+parallax layers and every UI sprite are still drawn to canvas at boot, and all sound is
+synthesised through Web Audio — there are no audio files at all. Four images are file-backed
+(`public/assets/art/*.webp`, listed in `ART_FILES`): the runner, the spikes, the pickup
+crystal and the painted mid-parallax cavern. They are *stamped into the existing canvas
+sizes* at boot rather than used directly, which is why swapping the art never moved a
+hitbox. `SPRITE_SIZES` is populated as textures are drawn and gives the size a replacement
+would need to be.
+
+**Hit areas come from `setSize`, never hand-written.** A Game Object's hit area is in local
+space measured from its *top-left* corner — Phaser's own default is `Rectangle(0, 0, w, h)`.
+The HUD buttons originally wrote theirs centred, `(-w/2, -h/2, w, h)`, matching how their
+child graphics are drawn, which displaced every hit area half a button up and to the left:
+only the top-left quarter of each button responded, and taps on empty space above and left
+of them worked. They now set a size and let Phaser derive the rectangle.
 
 ---
 
@@ -308,6 +349,20 @@ the level's fairness guarantees.
 - **Draw calls are not batched.** Every sprite has its own generated texture, so nothing
   batches. Packing them into one atlas is the known optimisation if performance ever becomes
   a real constraint; it has not been needed so far.
+- **No music.** Sound effects only, all synthesised. This is the next thing the owner wants
+  to look at.
+- **The runner reads small and dark** against the painted cave. A rim outline traced from
+  its alpha (teal, amber while shielded) fixed most of it — that outline is doing real work
+  and should not be removed casually. If it still gets lost, scaling the sprite up or
+  lightening the body are the next levers.
+- **The ground stride is a compromise and stays one** until the runner art is layered. It is
+  a single image with no separable legs, so the eight-frame cycle deforms the whole body — a
+  4% stretch-and-compress on a 340ms stride, the shape the jump tween makes at a fifth of the
+  size — rather than moving a leg. Three earlier attempts failed and each ruled something
+  out: rotating the sprite reads as rocking rather than running; a squash across only two
+  frames pops, because two frames cannot interpolate; and removing the motion entirely
+  leaves the runner visibly sliding. A real gait needs a sprite sheet, or the character split
+  into body and legs. The reasoning is in the comments in `player.js` and `textures.js`.
 
 ---
 
