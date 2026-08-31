@@ -9,6 +9,7 @@ import { WinScene } from './scenes/WinScene.js';
 import { installAutoPause, trackVisualViewport } from './systems/lifecycle.js';
 import { installFullscreenToggle } from './systems/fullscreen.js';
 import { audio } from './systems/audio.js';
+import { music } from './systems/music.js';
 import { SPRITE_SIZES } from './gfx/textures.js';
 
 // ?debug=1 draws Arcade bodies — useful when tuning hitboxes on a device.
@@ -83,3 +84,7 @@ export default game;
 // Exposed for the headless smoke test / debugging in devtools.
 window.__game = game;
 window.__spriteSizes = SPRITE_SIZES;
+// Audio has no visual output to inspect, so these are the only way to check from outside
+// that the graph is actually producing signal rather than silently doing nothing.
+window.__audio = audio;
+window.__music = music;

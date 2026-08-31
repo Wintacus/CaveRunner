@@ -5,6 +5,7 @@ import { getSafeArea } from '../systems/lifecycle.js';
 import { audio } from '../systems/audio.js';
 import { support as hapticSupport, lastEvent as lastHaptic } from '../systems/haptics.js';
 import { fullscreenState } from '../systems/fullscreen.js';
+import { music } from '../systems/music.js';
 
 const BTN = 56;
 
@@ -356,6 +357,7 @@ export class HudScene extends Phaser.Scene {
         `${fs.active ? ' (on)' : ''}${fs.standalone ? ' installed' : ''}  ${fs.reason}\n` +
         `tap ${t ? `${t.x},${t.y}` : '-'}  pause ${Math.round(b.x)},${Math.round(b.y)}` +
         `  ${t ? (inBtn ? 'IN' : 'OUT') : ''}\n` +
+        `music ${music.playing ? music.variant.label : 'off'}\n` +
         `canvas ${Math.round(r.width)}x${Math.round(r.height)} @${Math.round(r.left)},${Math.round(r.top)}` +
         `  btn ${px.toFixed(0)}px`
     );
