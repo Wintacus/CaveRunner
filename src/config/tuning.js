@@ -36,6 +36,17 @@ export const RUN_SPEED = 370;
  */
 export const MAX_DELTA_MS = 50;
 
+/**
+ * One stride, in ms. Drives the one-pixel footfall bob and the step sound that lands with
+ * it — one of each per stride.
+ *
+ * 340ms is about 2.9 a second, near a real running cadence. It is also the rate a sound
+ * plays at for seventy uninterrupted seconds, which is the number that actually matters
+ * here: fast enough and it stops being a footstep and becomes a rattle. Slow this down
+ * before making the sound quieter if it ever grates.
+ */
+export const STRIDE_MS = 340;
+
 // ---------------------------------------------------------------------------
 // Jump — tap-and-hold, variable height, asymmetric gravity
 // ---------------------------------------------------------------------------

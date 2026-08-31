@@ -19,6 +19,16 @@
 const SOUNDS = {
   /** Push-off: the moment the finger goes down. */
   jump: { type: 'blip', freq: [430, 700], dur: 0.09, wave: 'triangle', gain: 0.16, noise: 0.05 },
+  /**
+   * Footfall. By far the most-played sound in the game — measured at 3.2 a second of ground
+   * time, about 160 in a clean run — so it is built to disappear into the background rather
+   * than announce
+   * itself: a third of the landing thud's volume, half its length, and low enough in the
+   * spectrum to sit under everything else. The pitch jitter at the call site matters more
+   * here than anywhere: identical repeats at this rate are what turn a footstep into a
+   * rattle.
+   */
+  step: { type: 'thud', freq: [150, 68], dur: 0.06, wave: 'sine', gain: 0.055, noise: 0.035 },
   /** Landing impact: separate sound, triggered on touchdown. */
   land: { type: 'thud', freq: [180, 62], dur: 0.13, wave: 'sine', gain: 0.2, noise: 0.12 },
   crystal: { type: 'chime', notes: [1180, 1760], dur: 0.14, gain: 0.1 },

@@ -22,8 +22,10 @@ import { COLORS } from '../config/tuning.js';
 
 export const KEYS = {
   player: 'player',
+  playerStep: 'player_step',
   playerJump: 'player_jump',
   playerShield: 'player_shield',
+  playerStepShield: 'player_step_shield',
   playerJumpShield: 'player_jump_shield',
   shieldRing: 'shield_ring',
   shieldShard: 'shield_shard',
@@ -104,12 +106,12 @@ function stampContained(ctx, img, x, y, boxW, boxH) {
 }
 
 /**
- * Stamp the runner with a squash and lean baked into the canvas rather than applied to the
- * sprite, so the Arcade hitbox never moves with the pose. Only the jump tuck uses it now.
+ * Stamp the runner with a squash, lean or lift baked into the canvas rather than applied to
+ * the sprite, so the Arcade hitbox never moves with the pose.
  */
-function stampRunnerArt(ctx, img, w, h, { squashX = 1, squashY = 1, tilt = 0 } = {}) {
+function stampRunnerArt(ctx, img, w, h, { squashX = 1, squashY = 1, tilt = 0, lift = 0 } = {}) {
   const boxX = 2;
-  const boxY = 2;
+  const boxY = 2 - lift;
   const boxW = w + 12;
   const boxH = h + 12;
   ctx.save();
@@ -231,7 +233,16 @@ function polygon(ctx, points) {
  * @param {number}  opts.rim     rim-light colour; amber marks the shield as a *secondary*
  *                               cue reinforcing the bubble, never as the only signal
  */
-function makePlayer(scene, key, { crouch = false, rim = COLORS.teal } = {}) {
+/**
+ * `step` is the raised half of the footfall bob: one pixel, nothing else.
+ *
+ * Deliberately not a run cycle. Two earlier attempts moved the whole body — a rock about
+ * the feet, then a lift plus a 7% squash — and both read as the character pulsing rather
+ * than running, because a single PNG with no separable legs cannot carry a gait. One pixel
+ * on the stride beat is a tick, not a pulse: enough that the runner is not visibly sliding,
+ * small enough that there is nothing to find unpleasant.
+ */
+function makePlayer(scene, key, { crouch = false, step = false, rim = COLORS.teal } = {}) {
   const [w, h] = [30, 42];
   canvasTexture(scene, key, w + 16, h + 16, (ctx) => {
     const ox = 8;
@@ -247,7 +258,7 @@ function makePlayer(scene, key, { crouch = false, rim = COLORS.teal } = {}) {
       scratch.height = ch;
       const sc = scratch.getContext('2d');
       if (crouch) stampRunnerArt(sc, art, w, h, { squashX: 1.06, squashY: 0.88, tilt: 0.08 });
-      else stampRunnerArt(sc, art, w, h);
+      else stampRunnerArt(sc, art, w, h, { lift: step ? 1 : 0 });
 
       rimOutline(ctx, scratch, cw, ch, rim);
       ctx.drawImage(scratch, 0, 0);
@@ -806,8 +817,10 @@ function makeParallax(scene, height) {
 /** Build every runtime texture. Called once, from PreloadScene. */
 export function generateTextures(scene, viewHeight) {
   makePlayer(scene, KEYS.player);
+  makePlayer(scene, KEYS.playerStep, { step: true });
   makePlayer(scene, KEYS.playerJump, { crouch: true });
   makePlayer(scene, KEYS.playerShield, { rim: COLORS.amber });
+  makePlayer(scene, KEYS.playerStepShield, { step: true, rim: COLORS.amber });
   makePlayer(scene, KEYS.playerJumpShield, { crouch: true, rim: COLORS.amber });
   makeShieldRing(scene);
   makeShieldShard(scene);

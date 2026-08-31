@@ -11,7 +11,8 @@ import {
   JUMP_BUFFER_MS,
   PLAYER_BODY_W,
   PLAYER_BODY_H,
-  INVULN_FLASH_MS
+  INVULN_FLASH_MS,
+  STRIDE_MS
 } from '../config/tuning.js';
 import { KEYS } from '../gfx/textures.js';
 import { audio } from '../systems/audio.js';
@@ -49,11 +50,13 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     this.coyoteTimer = 0;
     this.bufferTimer = 0;
     this.holdTimer = 0;
+    this.strideT = 0;
     this.holding = false;
     this.jumping = false;
     this.airborne = false;
     this.frozen = false;
 
+    this.strideT = 0;
     this.invulnTimer = 0;
     this.flashTimer = 0;
 
@@ -160,6 +163,10 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
   /** Texture for the current pose, in the current shield state. */
   #poseTexture() {
     if (this.airborne && this.jumping) return this.shielded ? KEYS.playerJumpShield : KEYS.playerJump;
+    // Raised for the first half of the stride, down for the second. One pixel.
+    if (!this.airborne && this.strideT < STRIDE_MS / 2) {
+      return this.shielded ? KEYS.playerStepShield : KEYS.playerStep;
+    }
     return this.shielded ? KEYS.playerShield : KEYS.player;
   }
 
@@ -172,6 +179,7 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     this.coyoteTimer = 0;
     this.bufferTimer = 0;
     this.holdTimer = 0;
+    this.strideT = 0;
     this.jumping = false;
     this.airborne = false;
     this.holding = false;
@@ -258,7 +266,7 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     this.body.setVelocityX(RUN_SPEED);
 
     this.#updateInvuln(dt);
-    this.#updatePose();
+    this.#updatePose(dt);
     this.#updateShieldBubble(dt);
   }
 
@@ -334,7 +342,7 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
    * its feet reads as rocking on the spot rather than running. Jump and land squash tweens
    * still own scale while they run.
    */
-  #updatePose() {
+  #updatePose(dt) {
     const vy = this.body.velocity.y;
     if (this.airborne) {
       this.setAngle(Phaser.Math.Clamp(vy * 0.014, -10, 14));
@@ -344,8 +352,14 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
       }
     } else {
       this.setAngle(Phaser.Math.Linear(this.angle, 0, 0.35));
-      // Settle upright and hold one pose. Scale is left alone: the take-off and landing
+      // Advance the stride, and fire the footfall on the wrap — once per stride, on the
+      // beat the sprite drops back down. Scale is left alone: the take-off and landing
       // squash tweens own it and yoyo back to 1 themselves.
+      const before = this.strideT;
+      this.strideT = (this.strideT + dt) % STRIDE_MS;
+      if (this.strideT < before) {
+        audio.play('step', { detune: Phaser.Math.FloatBetween(-1.5, 1.5) });
+      }
       this.setTexture(this.#poseTexture());
     }
   }
