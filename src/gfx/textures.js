@@ -22,10 +22,8 @@ import { COLORS } from '../config/tuning.js';
 
 export const KEYS = {
   player: 'player',
-  playerStep: 'player_step',
   playerJump: 'player_jump',
   playerShield: 'player_shield',
-  playerStepShield: 'player_step_shield',
   playerJumpShield: 'player_jump_shield',
   shieldRing: 'shield_ring',
   shieldShard: 'shield_shard',
@@ -47,6 +45,25 @@ export const KEYS = {
   bgMid: 'bg_mid',
   bgNear: 'bg_near'
 };
+
+/**
+ * Frames in the ground stride cycle.
+ *
+ * The squash is baked per frame rather than tweened on the sprite because `setScale`
+ * resizes the Arcade body with it — measured: scaling to (0.9, 1.1) takes the 20x34 body
+ * to 18x37.4 and moves it. A hitbox that breathes is not a trade worth making for a
+ * cosmetic bounce. `stampRunnerArt` scales about the bottom of its box, so a baked squash
+ * keeps the feet planted for free.
+ *
+ * Eight frames because the count is the whole problem. The same squash across two frames
+ * was tried and read as a pulse — a hard pop between two shapes, which is what the jump
+ * tween never looks like because a tween interpolates. Eight at ~3 strides a second is 24
+ * changes a second, which reads as the continuous stretch-and-compress it is meant to be.
+ */
+export const STRIDE_FRAMES = 8;
+
+/** Texture key for stride frame `i`, in the given shield state. */
+export const strideKey = (i, shielded) => `player_stride_${shielded ? 's' : 'n'}_${i}`;
 
 /**
  * Pixel dimensions of every generated texture, keyed as in KEYS. Populated at boot by
@@ -234,15 +251,10 @@ function polygon(ctx, points) {
  *                               cue reinforcing the bubble, never as the only signal
  */
 /**
- * `step` is the raised half of the footfall bob: one pixel, nothing else.
- *
- * Deliberately not a run cycle. Two earlier attempts moved the whole body — a rock about
- * the feet, then a lift plus a 7% squash — and both read as the character pulsing rather
- * than running, because a single PNG with no separable legs cannot carry a gait. One pixel
- * on the stride beat is a tick, not a pulse: enough that the runner is not visibly sliding,
- * small enough that there is nothing to find unpleasant.
+ * `squash` is a {x, y} scale pair baked into the frame — the ground stride's stretch and
+ * compress, the same shape the jump tween makes, an order of magnitude smaller.
  */
-function makePlayer(scene, key, { crouch = false, step = false, rim = COLORS.teal } = {}) {
+function makePlayer(scene, key, { crouch = false, squash = null, rim = COLORS.teal } = {}) {
   const [w, h] = [30, 42];
   canvasTexture(scene, key, w + 16, h + 16, (ctx) => {
     const ox = 8;
@@ -258,7 +270,7 @@ function makePlayer(scene, key, { crouch = false, step = false, rim = COLORS.tea
       scratch.height = ch;
       const sc = scratch.getContext('2d');
       if (crouch) stampRunnerArt(sc, art, w, h, { squashX: 1.06, squashY: 0.88, tilt: 0.08 });
-      else stampRunnerArt(sc, art, w, h, { lift: step ? 1 : 0 });
+      else stampRunnerArt(sc, art, w, h, squash ? { squashX: squash.x, squashY: squash.y } : {});
 
       rimOutline(ctx, scratch, cw, ch, rim);
       ctx.drawImage(scratch, 0, 0);
@@ -814,13 +826,31 @@ function makeParallax(scene, height) {
   });
 }
 
+/**
+ * The ground stride: compressed and wide on the footfall, stretched and narrow between.
+ *
+ * 4% against the jump tween's 20% — "far more subtle" was the brief, and at this size the
+ * effect has to be felt as bounce rather than seen as deformation. Frame 0 is the
+ * compressed one and the footfall sound fires on it, so the sound lands with the impact
+ * rather than near it.
+ */
+const STRIDE_AMPLITUDE = 0.04;
+
+function makeStrideFrames(scene) {
+  for (let i = 0; i < STRIDE_FRAMES; i++) {
+    const c = Math.cos((i / STRIDE_FRAMES) * Math.PI * 2);
+    const squash = { x: 1 + STRIDE_AMPLITUDE * c, y: 1 - STRIDE_AMPLITUDE * c };
+    makePlayer(scene, strideKey(i, false), { squash });
+    makePlayer(scene, strideKey(i, true), { squash, rim: COLORS.amber });
+  }
+}
+
 /** Build every runtime texture. Called once, from PreloadScene. */
 export function generateTextures(scene, viewHeight) {
   makePlayer(scene, KEYS.player);
-  makePlayer(scene, KEYS.playerStep, { step: true });
+  makeStrideFrames(scene);
   makePlayer(scene, KEYS.playerJump, { crouch: true });
   makePlayer(scene, KEYS.playerShield, { rim: COLORS.amber });
-  makePlayer(scene, KEYS.playerStepShield, { step: true, rim: COLORS.amber });
   makePlayer(scene, KEYS.playerJumpShield, { crouch: true, rim: COLORS.amber });
   makeShieldRing(scene);
   makeShieldShard(scene);

@@ -14,7 +14,7 @@ import {
   INVULN_FLASH_MS,
   STRIDE_MS
 } from '../config/tuning.js';
-import { KEYS } from '../gfx/textures.js';
+import { KEYS, STRIDE_FRAMES, strideKey } from '../gfx/textures.js';
 import { audio } from '../systems/audio.js';
 
 /**
@@ -163,9 +163,9 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
   /** Texture for the current pose, in the current shield state. */
   #poseTexture() {
     if (this.airborne && this.jumping) return this.shielded ? KEYS.playerJumpShield : KEYS.playerJump;
-    // Raised for the first half of the stride, down for the second. One pixel.
-    if (!this.airborne && this.strideT < STRIDE_MS / 2) {
-      return this.shielded ? KEYS.playerStepShield : KEYS.playerStep;
+    if (!this.airborne) {
+      const i = Math.floor((this.strideT / STRIDE_MS) * STRIDE_FRAMES) % STRIDE_FRAMES;
+      return strideKey(i, this.shielded);
     }
     return this.shielded ? KEYS.playerShield : KEYS.player;
   }
