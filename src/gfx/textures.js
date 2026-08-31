@@ -22,10 +22,8 @@ import { COLORS } from '../config/tuning.js';
 
 export const KEYS = {
   player: 'player',
-  playerRun: 'player_run',
   playerJump: 'player_jump',
   playerShield: 'player_shield',
-  playerRunShield: 'player_run_shield',
   playerJumpShield: 'player_jump_shield',
   shieldRing: 'shield_ring',
   shieldShard: 'shield_shard',
@@ -106,20 +104,12 @@ function stampContained(ctx, img, x, y, boxW, boxH) {
 }
 
 /**
- * Stamp the runner still with a squash, lift and lean baked into the canvas. The game
- * object stays at scale 1 so the Arcade hitbox does not pulse with the gait.
- *
- * `lift` is what makes a run out of a single static drawing. The source art is one PNG —
- * there is no sprite sheet and no separable legs — so the only honest way to suggest
- * footfalls is to move the whole body the way a body moves when it runs: up on the
- * passing frame, down and compressed on contact. Rotation was tried here first and is the
- * one thing that does *not* read as a gait; a character swinging about its feet reads as
- * rocking on the spot. Everything is baked into the canvas rather than applied to the
- * sprite so the physics body never sees any of it.
+ * Stamp the runner with a squash and lean baked into the canvas rather than applied to the
+ * sprite, so the Arcade hitbox never moves with the pose. Only the jump tuck uses it now.
  */
-function stampRunnerArt(ctx, img, w, h, { squashX = 1, squashY = 1, tilt = 0, lift = 0 } = {}) {
+function stampRunnerArt(ctx, img, w, h, { squashX = 1, squashY = 1, tilt = 0 } = {}) {
   const boxX = 2;
-  const boxY = 2 - lift;
+  const boxY = 2;
   const boxW = w + 12;
   const boxH = h + 12;
   ctx.save();
@@ -238,22 +228,15 @@ function polygon(ctx, points) {
 /**
  * @param {object} opts
  * @param {boolean} opts.crouch  mid-jump tuck
- * @param {number}  opts.gait    0 = contact (squash), 1 = passing (stretch + lean)
  * @param {number}  opts.rim     rim-light colour; amber marks the shield as a *secondary*
  *                               cue reinforcing the bubble, never as the only signal
  */
-function makePlayer(scene, key, { crouch = false, gait = 0, rim = COLORS.teal } = {}) {
+function makePlayer(scene, key, { crouch = false, rim = COLORS.teal } = {}) {
   const [w, h] = [30, 42];
   canvasTexture(scene, key, w + 16, h + 16, (ctx) => {
     const ox = 8;
     const oy = 8;
     const art = sourceImage(scene, ART_FILES.runner.key);
-    // Passing frame rises and lengthens; contact frame drops and compresses. No tilt: see
-    // stampRunnerArt. The two differ by 3px of height and ~7% of body shape, which is small
-    // on a still and unmistakable at 5 strides a second.
-    const step = gait
-      ? { squashX: 0.97, squashY: 1.05, lift: 3 }
-      : { squashX: 1.04, squashY: 0.96, lift: 0 };
     if (art) {
       // Stamp to a scratch canvas first: the outline is traced from the stamped result, so
       // it has to follow whatever squash and lift this frame applied.
@@ -264,7 +247,7 @@ function makePlayer(scene, key, { crouch = false, gait = 0, rim = COLORS.teal } 
       scratch.height = ch;
       const sc = scratch.getContext('2d');
       if (crouch) stampRunnerArt(sc, art, w, h, { squashX: 1.06, squashY: 0.88, tilt: 0.08 });
-      else stampRunnerArt(sc, art, w, h, step);
+      else stampRunnerArt(sc, art, w, h);
 
       rimOutline(ctx, scratch, cw, ch, rim);
       ctx.drawImage(scratch, 0, 0);
@@ -275,7 +258,7 @@ function makePlayer(scene, key, { crouch = false, gait = 0, rim = COLORS.teal } 
     glowBlob(ctx, ox + w / 2, oy + h / 2, 22, rim, 0.5);
 
     // Body
-    const bodyH = crouch ? h - 6 : h - (gait ? 0 : 3);
+    const bodyH = crouch ? h - 6 : h;
     const bodyY = oy + (h - bodyH);
     ctx.fillStyle = hex(0x121722);
     roundedRect(ctx, ox + 2, bodyY, w - 4, bodyH, 9);
@@ -299,12 +282,11 @@ function makePlayer(scene, key, { crouch = false, gait = 0, rim = COLORS.teal } 
     roundedRect(ctx, ox + w - 13, bodyY + 7, 9, 6, 3);
     ctx.fill();
 
-    // Feet — the old gait. Offset them on the passing frame so a still does not slide.
-    const footShift = gait ? 4 : 0;
+    // Feet
     ctx.fillStyle = rgba(rim, 0.55);
-    roundedRect(ctx, ox + 4 + footShift, oy + h - 5, 9, 5, 2);
+    roundedRect(ctx, ox + 4, oy + h - 5, 9, 5, 2);
     ctx.fill();
-    roundedRect(ctx, ox + w - 13 - footShift, oy + h - 5, 9, 5, 2);
+    roundedRect(ctx, ox + w - 13, oy + h - 5, 9, 5, 2);
     ctx.fill();
   });
 }
@@ -824,10 +806,8 @@ function makeParallax(scene, height) {
 /** Build every runtime texture. Called once, from PreloadScene. */
 export function generateTextures(scene, viewHeight) {
   makePlayer(scene, KEYS.player);
-  makePlayer(scene, KEYS.playerRun, { gait: 1 });
   makePlayer(scene, KEYS.playerJump, { crouch: true });
   makePlayer(scene, KEYS.playerShield, { rim: COLORS.amber });
-  makePlayer(scene, KEYS.playerRunShield, { gait: 1, rim: COLORS.amber });
   makePlayer(scene, KEYS.playerJumpShield, { crouch: true, rim: COLORS.amber });
   makeShieldRing(scene);
   makeShieldShard(scene);

@@ -36,17 +36,6 @@ export const RUN_SPEED = 370;
  */
 export const MAX_DELTA_MS = 50;
 
-/**
- * One full stride of the run cycle, in ms. Two footfalls per cycle, so the pose changes
- * every RUN_CYCLE_MS/2.
- *
- * 200ms is ~5 strides a second, which is what a body moving at RUN_SPEED looks like. The
- * first version of the gait ran a ~440ms cycle — 2.3 strides a second — and at that rate
- * the feet visibly slide along the ground instead of carrying the character. The menu
- * runner shares this number so the two agree; they used to disagree by a factor of three.
- */
-export const RUN_CYCLE_MS = 200;
-
 // ---------------------------------------------------------------------------
 // Jump — tap-and-hold, variable height, asymmetric gravity
 // ---------------------------------------------------------------------------

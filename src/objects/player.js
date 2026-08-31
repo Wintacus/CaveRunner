@@ -11,8 +11,7 @@ import {
   JUMP_BUFFER_MS,
   PLAYER_BODY_W,
   PLAYER_BODY_H,
-  INVULN_FLASH_MS,
-  RUN_CYCLE_MS
+  INVULN_FLASH_MS
 } from '../config/tuning.js';
 import { KEYS } from '../gfx/textures.js';
 import { audio } from '../systems/audio.js';
@@ -57,7 +56,6 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
 
     this.invulnTimer = 0;
     this.flashTimer = 0;
-    this.runT = 0;
 
     this.onLand = null; // set by GameScene (dust + camera nudge)
     this.onJump = null;
@@ -159,17 +157,9 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     this.setTexture(this.#poseTexture());
   }
 
-  /** Position within the stride, 0..1. Two footfalls per cycle, so the pose flips at 0.5. */
-  get #runPhase() {
-    return (this.runT % RUN_CYCLE_MS) / RUN_CYCLE_MS;
-  }
-
   /** Texture for the current pose, in the current shield state. */
   #poseTexture() {
     if (this.airborne && this.jumping) return this.shielded ? KEYS.playerJumpShield : KEYS.playerJump;
-    if (!this.airborne && this.#runPhase < 0.5) {
-      return this.shielded ? KEYS.playerRunShield : KEYS.playerRun;
-    }
     return this.shielded ? KEYS.playerShield : KEYS.player;
   }
 
@@ -182,7 +172,6 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     this.coyoteTimer = 0;
     this.bufferTimer = 0;
     this.holdTimer = 0;
-    this.runT = 0;
     this.jumping = false;
     this.airborne = false;
     this.holding = false;
@@ -269,7 +258,7 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     this.body.setVelocityX(RUN_SPEED);
 
     this.#updateInvuln(dt);
-    this.#updatePose(dt);
+    this.#updatePose();
     this.#updateShieldBubble(dt);
   }
 
@@ -345,7 +334,7 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
    * its feet reads as rocking on the spot rather than running. Jump and land squash tweens
    * still own scale while they run.
    */
-  #updatePose(dt) {
+  #updatePose() {
     const vy = this.body.velocity.y;
     if (this.airborne) {
       this.setAngle(Phaser.Math.Clamp(vy * 0.014, -10, 14));
@@ -354,15 +343,9 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
         this.setScale(2 - stretch, stretch);
       }
     } else {
-      this.runT = (this.runT + dt) % RUN_CYCLE_MS;
       this.setAngle(Phaser.Math.Linear(this.angle, 0, 0.35));
-      // The pose is a *texture* swap, so it is not gated on the squash tweens the way a
-      // scale write would have to be — the two never touch the same property. It was
-      // gated, behind `!isTweening(this)`, and that is why the gait never appeared at all:
-      // a land tween parks itself in the manager and never advances (elapsed stays 0 with
-      // the tween ACTIVE), so the guard was permanently false and the runner held a single
-      // frame for the whole level. Scale is left alone here; the squash tweens yoyo back to
-      // 1 themselves and `placeFeetAt` resets it on respawn.
+      // Settle upright and hold one pose. Scale is left alone: the take-off and landing
+      // squash tweens own it and yoyo back to 1 themselves.
       this.setTexture(this.#poseTexture());
     }
   }
