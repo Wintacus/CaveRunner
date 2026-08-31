@@ -162,6 +162,39 @@ function wrapBlendHorizontal(ctx, w, h, blend) {
 }
 
 /** Glow behind opaque art, never composited through it (that crushed the gray hat). */
+/**
+ * Rim-light the stamped art by tracing its own alpha.
+ *
+ * The procedural runner this replaced was a dark silhouette with a 2.5px teal stroke round
+ * it, and that stroke was doing more work than it looked: it separated the character from
+ * the cave, held the shape together as one object, and carried the shield state in its
+ * colour. The painted PNG arrived with none of it and got a soft glow instead, which is
+ * not the same thing — a glow bleeds outward and leaves the edge undefined, so the runner
+ * dissolves into a busy background.
+ *
+ * Traced from the alpha channel rather than drawn as a path, because the source is a
+ * picture and not a shape we know the outline of: silhouette it, stamp that silhouette
+ * around a small circle of offsets, then put the art back on top.
+ */
+function rimOutline(ctx, source, w, h, colour, { width = 2, alpha = 0.85 } = {}) {
+  const sil = document.createElement('canvas');
+  sil.width = w;
+  sil.height = h;
+  const s = sil.getContext('2d');
+  s.drawImage(source, 0, 0);
+  s.globalCompositeOperation = 'source-in';
+  s.fillStyle = rgba(colour, 1);
+  s.fillRect(0, 0, w, h);
+
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  for (let i = 0; i < 12; i++) {
+    const a = (i / 12) * Math.PI * 2;
+    ctx.drawImage(sil, Math.cos(a) * width, Math.sin(a) * width);
+  }
+  ctx.restore();
+}
+
 function glowBehind(ctx, x, y, radius, colour, strength) {
   ctx.save();
   ctx.globalCompositeOperation = 'destination-over';
@@ -222,8 +255,19 @@ function makePlayer(scene, key, { crouch = false, gait = 0, rim = COLORS.teal } 
       ? { squashX: 0.97, squashY: 1.05, lift: 3 }
       : { squashX: 1.04, squashY: 0.96, lift: 0 };
     if (art) {
-      if (crouch) stampRunnerArt(ctx, art, w, h, { squashX: 1.06, squashY: 0.88, tilt: 0.08 });
-      else stampRunnerArt(ctx, art, w, h, step);
+      // Stamp to a scratch canvas first: the outline is traced from the stamped result, so
+      // it has to follow whatever squash and lift this frame applied.
+      const cw = w + 16;
+      const ch = h + 16;
+      const scratch = document.createElement('canvas');
+      scratch.width = cw;
+      scratch.height = ch;
+      const sc = scratch.getContext('2d');
+      if (crouch) stampRunnerArt(sc, art, w, h, { squashX: 1.06, squashY: 0.88, tilt: 0.08 });
+      else stampRunnerArt(sc, art, w, h, step);
+
+      rimOutline(ctx, scratch, cw, ch, rim);
+      ctx.drawImage(scratch, 0, 0);
       // Destination-over so the gray hat cannot be multiplied into the rim glow.
       glowBehind(ctx, ox + w / 2, oy + h / 2, 22, rim, rim === COLORS.amber ? 0.55 : 0.28);
       return;
