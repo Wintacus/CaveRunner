@@ -85,6 +85,22 @@ export const SPRITE_SIZES = {};
  *
  * The PNG originals are in git at c637f93 if anything ever needs re-exporting.
  */
+/**
+ * The hazard palette.
+ *
+ * The painted spike art (spikes-rose.webp) is dark faceted rock with a hot crimson rim and
+ * a lava crack down it. The GEOMETRY is right for this level — sharp, dark, properly
+ * menacing — but the colour is a volcanic language dropped into a cold bioluminescent cave,
+ * and it fought the art rather than sitting in it.
+ *
+ * So the art is recoloured at boot instead of replaced. The rock is near-grey and grey has
+ * no saturation, so a hue remap moves only the rim and the crack — exactly the parts that
+ * clashed — and leaves every bit of the painting's shading and silhouette intact.
+ *
+ * `hue` is the target in degrees, `sat` and `light` scale what the pixel already had.
+ */
+export const HAZARD_TONE = { hue: 252, sat: 0.5, light: 0.88, glow: 0x9d8cff };
+
 export const ART_FILES = {
   runner: { key: 'art_runner', path: 'assets/art/runner-v4-gray-hat.webp' },
   spikes: { key: 'art_spikes', path: 'assets/art/spikes-rose.webp' },
@@ -120,6 +136,53 @@ function sourceImage(scene, key) {
 }
 
 /** Scale `img` to fit `box`, bottom-aligned so grounded sprites keep their feet. */
+/**
+ * Stamp art with its saturated pixels remapped to a new hue.
+ *
+ * Done by pixel rather than with ctx.filter deliberately: canvas filters are unevenly
+ * supported on the mobile Safari this game is actually played on, and a silently ignored
+ * filter would ship the original crimson to the one device that matters. This runs once per
+ * texture at boot on a ~380x360 image, so the cost is irrelevant.
+ */
+function stampRecoloured(ctx, img, x, y, boxW, boxH, tone) {
+  if (!img) return false;
+  const buf = document.createElement('canvas');
+  buf.width = img.width;
+  buf.height = img.height;
+  const bctx = buf.getContext('2d', { willReadFrequently: true });
+  bctx.drawImage(img, 0, 0);
+  const data = bctx.getImageData(0, 0, buf.width, buf.height);
+  const px = data.data;
+  for (let i = 0; i < px.length; i += 4) {
+    if (px[i + 3] === 0) continue;
+    const r = px[i] / 255;
+    const g = px[i + 1] / 255;
+    const b = px[i + 2] / 255;
+    const max = Math.max(r, g, b);
+    const min = Math.min(r, g, b);
+    const l = (max + min) / 2;
+    const d = max - min;
+    if (d < 0.04) continue; // near-grey: the rock itself, left exactly as painted
+    const sat = Math.min(1, (d / (1 - Math.abs(2 * l - 1))) * tone.sat);
+    const li = Math.min(1, l * tone.light);
+    // HSL -> RGB at the target hue.
+    const c = (1 - Math.abs(2 * li - 1)) * sat;
+    const hp = tone.hue / 60;
+    const xx = c * (1 - Math.abs((hp % 2) - 1));
+    const m = li - c / 2;
+    let rr = 0;
+    let gg = 0;
+    let bb = 0;
+    if (hp < 1) { rr = c; gg = xx; } else if (hp < 2) { rr = xx; gg = c; } else if (hp < 3) { gg = c; bb = xx; }
+    else if (hp < 4) { gg = xx; bb = c; } else if (hp < 5) { rr = xx; bb = c; } else { rr = c; bb = xx; }
+    px[i] = (rr + m) * 255;
+    px[i + 1] = (gg + m) * 255;
+    px[i + 2] = (bb + m) * 255;
+  }
+  bctx.putImageData(data, 0, 0);
+  return stampContained(ctx, buf, x, y, boxW, boxH);
+}
+
 function stampContained(ctx, img, x, y, boxW, boxH) {
   if (!img) return false;
   ctx.imageSmoothingEnabled = true;
@@ -600,8 +663,8 @@ function makeStalagmite(scene) {
   canvasTexture(scene, KEYS.stalagmite, w, h, (ctx) => {
     const art = sourceImage(scene, ART_FILES.spikes.key);
     if (art) {
-      glowBlob(ctx, w / 2, 14, 20, COLORS.rose, 0.35);
-      stampContained(ctx, art, 0, 0, w, h);
+      glowBlob(ctx, w / 2, 14, 20, HAZARD_TONE.glow, 0.35);
+      stampRecoloured(ctx, art, 0, 0, w, h, HAZARD_TONE);
       return;
     }
     glowBlob(ctx, w / 2, 14, 20, COLORS.rose, 0.4);
@@ -634,7 +697,7 @@ function makeStalactite(scene) {
   const w = 48;
   const h = 160;
   canvasTexture(scene, KEYS.stalactite, w, h, (ctx) => {
-    glowBlob(ctx, w / 2, h - 12, 30, COLORS.rose, 0.75);
+    glowBlob(ctx, w / 2, h - 12, 30, HAZARD_TONE.glow, 0.75);
 
     // An actual point, and an asymmetric one. Hazards read as danger by SHAPE first, and a
     // spike that tapers off-centre looks grown rather than drawn.
@@ -649,7 +712,7 @@ function makeStalactite(scene) {
     ]);
     ctx.fillStyle = hex(0x232a3a);
     ctx.fill();
-    ctx.strokeStyle = rgba(COLORS.rose, 1);
+    ctx.strokeStyle = rgba(HAZARD_TONE.glow, 1);
     ctx.lineWidth = 2.6;
     ctx.stroke();
 
@@ -662,7 +725,7 @@ function makeStalactite(scene) {
       [w / 2 + 5, h * 0.66],
       [w / 2 + 1, h]
     ]);
-    ctx.fillStyle = rgba(COLORS.rose, 0.3);
+    ctx.fillStyle = rgba(HAZARD_TONE.glow, 0.3);
     ctx.fill();
 
     // Growth banding where it meets the ceiling, thinning as it tapers.
@@ -685,7 +748,7 @@ function makeStalactite(scene) {
 
     // The last few pixels of the tip glow hot, so the exact point the player has to clear
     // is the brightest thing on it.
-    glowBlob(ctx, w / 2, h - 4, 11, 0xffd9e2, 0.85);
+    glowBlob(ctx, w / 2, h - 4, 11, 0xe6e0ff, 0.85);
   });
 }
 
@@ -695,8 +758,8 @@ function makeSpike(scene) {
   canvasTexture(scene, KEYS.spike, w, h, (ctx) => {
     const art = sourceImage(scene, ART_FILES.spikes.key);
     if (art) {
-      glowBlob(ctx, w / 2, h - 6, 16, COLORS.rose, 0.3);
-      stampContained(ctx, art, 0, 0, w, h);
+      glowBlob(ctx, w / 2, h - 6, 16, HAZARD_TONE.glow, 0.3);
+      stampRecoloured(ctx, art, 0, 0, w, h, HAZARD_TONE);
       return;
     }
     glowBlob(ctx, w / 2, h - 6, 16, COLORS.rose, 0.35);
