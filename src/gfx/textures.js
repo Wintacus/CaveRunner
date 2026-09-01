@@ -523,22 +523,69 @@ function makeGoal(scene) {
   const w = 96;
   const h = 150;
   canvasTexture(scene, KEYS.goal, w, h, (ctx) => {
-    glowBlob(ctx, w / 2, h / 2, 62, COLORS.teal, 0.5);
-    glowBlob(ctx, w / 2, h / 2, 34, COLORS.ice, 0.55);
-    // Arch of standing crystals
-    ctx.strokeStyle = rgba(COLORS.teal, 0.9);
-    ctx.lineWidth = 3;
+    // The goal was an arch of teal glow blobs, which is the same collision that hid the
+    // score and the checkpoint toast: teal on a bright cyan cave. The most important object
+    // in the level was the least visible thing in it.
+    //
+    // So it is amber now, and it is a giant version of the crystal the whole run has been
+    // spent collecting — in theme by being made of the level's own subject rather than by
+    // borrowing its colours, and legible because amber is the one hue this cave does not
+    // already own.
+
+    // Its own ground first. Same trick as the outlines: give it something to stand against
+    // instead of asking it to win a fight with the background.
     ctx.beginPath();
-    ctx.moveTo(14, h - 6);
-    ctx.quadraticCurveTo(w / 2, -18, w - 14, h - 6);
-    ctx.stroke();
-    ctx.fillStyle = rgba(COLORS.ice, 0.14);
+    ctx.moveTo(15, h);
+    ctx.lineTo(15, h * 0.46);
+    ctx.quadraticCurveTo(15, 9, w / 2, 9);
+    ctx.quadraticCurveTo(w - 15, 9, w - 15, h * 0.46);
+    ctx.lineTo(w - 15, h);
+    ctx.closePath();
+    ctx.fillStyle = rgba(0x0a1020, 0.58);
     ctx.fill();
-    for (let i = 0; i < 7; i++) {
-      const t = i / 6;
-      const x = 14 + t * (w - 28);
-      const y = h - 6 - Math.sin(t * Math.PI) * (h - 34);
-      glowBlob(ctx, x, y, 9, COLORS.ice, 0.9);
+    ctx.strokeStyle = rgba(COLORS.amber, 0.5);
+    ctx.lineWidth = 2.5;
+    ctx.stroke();
+
+    const cy = h * 0.54;
+    glowBlob(ctx, w / 2, cy, 56, COLORS.amber, 0.6);
+    glowBlob(ctx, w / 2, cy, 26, 0xfff0cf, 0.65);
+
+    // The prize itself, at roughly twice the size of a collectible.
+    const art = sourceImage(scene, ART_FILES.crystal.key);
+    if (art) {
+      stampContained(ctx, art, w / 2 - 31, cy - 39, 62, 78);
+    } else {
+      polygon(ctx, [
+        [w / 2, cy - 38],
+        [w / 2 + 21, cy - 4],
+        [w / 2, cy + 38],
+        [w / 2 - 21, cy - 4]
+      ]);
+      ctx.fillStyle = rgba(COLORS.amber, 0.7);
+      ctx.fill();
+      ctx.strokeStyle = rgba(0xffffff, 0.85);
+      ctx.lineWidth = 2;
+      ctx.stroke();
+      polygon(ctx, [[w / 2, cy - 38], [w / 2, cy + 38], [w / 2 - 21, cy - 4]]);
+      ctx.fillStyle = rgba(0xffffff, 0.3);
+      ctx.fill();
+    }
+
+    // Two shards at the outer feet, so it is rooted rather than floating. Four read as a
+    // row of teeth under the arch, which is not the impression a finish line wants.
+    for (const [x, half, tall] of [[24, 6, 22], [w - 24, 5, 18]]) {
+      polygon(ctx, [[x, h - 6 - tall], [x + half, h - 6], [x - half, h - 6]]);
+      ctx.fillStyle = rgba(COLORS.amber, 0.55);
+      ctx.fill();
+      ctx.strokeStyle = rgba(0xffe6b0, 0.7);
+      ctx.lineWidth = 1.2;
+      ctx.stroke();
+    }
+
+    // A few motes rising off it.
+    for (const [x, y, r] of [[w / 2 - 26, cy - 30, 3], [w / 2 + 24, cy - 18, 2.5], [w / 2 + 8, cy - 46, 2]]) {
+      glowBlob(ctx, x, y, r * 3, 0xfff0cf, 0.8);
     }
   });
 }
@@ -580,22 +627,65 @@ function makeStalagmite(scene) {
 }
 
 function makeStalactite(scene) {
-  // One tile-tall unit; the game stretches it to the authored length and the tip
-  // glow stays proportional because it is drawn into the bottom of the texture.
+  // Drawn at the length the level actually uses (5 tiles = 160px) so the common case is not
+  // stretched at all. It used to be a 48x32 trapezoid blown up 5x vertically, which is why
+  // it read as a flat grey slab with a flat bottom — hanging in a cave whose ceiling is
+  // already full of painted crystal spikes, it looked like a placeholder because it was one.
   const w = 48;
-  const h = 32;
+  const h = 160;
   canvasTexture(scene, KEYS.stalactite, w, h, (ctx) => {
+    glowBlob(ctx, w / 2, h - 12, 30, COLORS.rose, 0.75);
+
+    // An actual point, and an asymmetric one. Hazards read as danger by SHAPE first, and a
+    // spike that tapers off-centre looks grown rather than drawn.
     polygon(ctx, [
-      [w / 2 - 16, 0],
-      [w / 2 + 16, 0],
-      [w / 2 + 6, h],
-      [w / 2 - 6, h]
+      [w / 2 - 17, 0],
+      [w / 2 + 17, 0],
+      [w / 2 + 11, h * 0.34],
+      [w / 2 + 5, h * 0.66],
+      [w / 2 + 1, h],
+      [w / 2 - 5, h * 0.7],
+      [w / 2 - 10, h * 0.38]
     ]);
     ctx.fillStyle = hex(0x232a3a);
     ctx.fill();
-    ctx.strokeStyle = rgba(COLORS.rose, 0.7);
-    ctx.lineWidth = 2;
+    ctx.strokeStyle = rgba(COLORS.rose, 1);
+    ctx.lineWidth = 2.6;
     ctx.stroke();
+
+    // A lit facet down one side. Without it the silhouette is a flat cut-out; with it the
+    // thing reads as crystal, which is what everything else in this cave is made of.
+    polygon(ctx, [
+      [w / 2, 0],
+      [w / 2 + 17, 0],
+      [w / 2 + 11, h * 0.34],
+      [w / 2 + 5, h * 0.66],
+      [w / 2 + 1, h]
+    ]);
+    ctx.fillStyle = rgba(COLORS.rose, 0.3);
+    ctx.fill();
+
+    // Growth banding where it meets the ceiling, thinning as it tapers.
+    ctx.strokeStyle = rgba(0xffffff, 0.16);
+    ctx.lineWidth = 1;
+    for (const [y, half] of [[15, 15], [33, 13], [54, 11], [78, 8]]) {
+      ctx.beginPath();
+      ctx.moveTo(w / 2 - half, y);
+      ctx.lineTo(w / 2 + half, y);
+      ctx.stroke();
+    }
+
+    // Hot edge down the leading side into the tip.
+    ctx.strokeStyle = rgba(0xffffff, 0.6);
+    ctx.lineWidth = 1.6;
+    ctx.beginPath();
+    ctx.moveTo(w / 2 - 10, h * 0.38);
+    ctx.lineTo(w / 2 + 1, h - 2);
+    ctx.stroke();
+
+    // The last few pixels of the tip glow hot, so the exact point the player has to clear
+    // is the brightest thing on it.
+    glowBlob(ctx, w / 2, h - 4, 11, 0xffd9e2, 0.85);
   });
 }
 
