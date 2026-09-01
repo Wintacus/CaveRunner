@@ -27,13 +27,13 @@
 const SOUNDS = {
   /** Push-off: the moment the finger goes down. */
   /**
-   * Push-off. Carries a note as well as a body — see MOTION_RANGE. Its physical layer is
-   * quieter than it was, because the note is now doing some of the work of being noticed.
+   * Push-off. It ADVANCES the walk without voicing it — no `note`, so no pitch is heard —
+   * and only the landing sounds. See MOTION_RANGE for why. Its body is at full strength
+   * because nothing else here is carrying the sound.
    */
   jump: {
     type: 'bound', step: 1,
-    freq: [430, 700], dur: 0.07, wave: 'triangle', gain: 0.055, noise: 0.03,
-    note: { gain: 0.052, decay: 0.38 }, wet: 0.35
+    freq: [430, 700], dur: 0.09, wave: 'triangle', gain: 0.14, noise: 0.044
   },
   /**
    * Footfall. By far the most-played sound in the game — measured at 3.2 a second of ground
@@ -195,10 +195,17 @@ const SCATTER_PARTIALS = [[1, 1], [2.7, 0.18]];
 const MOTION_PARTIALS = [[1, 1, 0.008], [2, 0.12, 0.02]];
 
 /**
- * Jump and land carry a pitch, and it WALKS: every jump steps up the scale, every landing
- * steps back down, each continuing from wherever the last one left it. That memory is the
- * point — an independent random note per jump is varied but goes nowhere, while a walk
- * wanders like a bass line across a run.
+ * Motion carries a pitch, and it WALKS: every jump steps up the scale, every landing steps
+ * back down, each continuing from wherever the last one left it. That memory is the point —
+ * an independent random note is varied but goes nowhere, while a walk wanders like a bass
+ * line across a run.
+ *
+ * Only the LANDING is voiced. Both halves of the motion still move the walk, so the line
+ * wanders exactly as it did when both were audible; the jump simply takes its step in
+ * silence. Voicing both was a tad busy — it put pitched events at 3.5 a second against the
+ * crystals' 2.1 — and voicing only the landing halves that back to 2.8 without flattening
+ * the line into a repeating descent, which is what stepping only downward would give.
+ * Landing is also the better half to keep: it is the resolution of the gesture.
  *
  * Degrees -8..-1 is 196-523Hz, an octave under the crystal's 294-784. That separation is
  * deliberate and it follows from a measurement: 67 of the 98 jump/land events in a run land
@@ -318,15 +325,17 @@ class AudioManager {
         break;
       }
       case 'bound': {
-        // The body still takes the caller's detune — that jitter is what stops ninety
-        // repeats becoming a rattle. The NOTE does not: it belongs to the scale, and
-        // detuning it would be the one thing that could make these clash.
+        // The body takes the caller's detune — that jitter is what stops ninety repeats
+        // becoming a rattle. The note does not: it belongs to the scale, and detuning it
+        // would be the one thing that could make these clash.
         this.#body(t, def, volume, pitch);
         const [low, high] = MOTION_RANGE;
         const move = def.step * (1 + Math.floor(Math.random() * 3));
         this.motionRung = Math.max(low, Math.min(high, this.motionRung + move));
-        this.#ping(t, pentatonic(this.motionRung), def.note.gain * volume, def.note.decay,
-          0.008, def.wet, MOTION_PARTIALS);
+        if (def.note) {
+          this.#ping(t, pentatonic(this.motionRung), def.note.gain * volume, def.note.decay,
+            0.008, def.wet, MOTION_PARTIALS);
+        }
         break;
       }
       case 'twinkle': {
