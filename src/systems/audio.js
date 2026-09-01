@@ -127,8 +127,15 @@ const SOUNDS = {
     decay: 1.9,
     gain: 0.155,
     falloff: 0.05,
-    /** The resolution: a high tonic, held back a beat and rung longer than the climb. */
-    peak: { degree: 10, delay: 0.18, gain: 0.135, decay: 2.4 },
+    /**
+     * The resolution: a high tonic, held back a beat and rung longer than the climb.
+     *
+     * Its gain is well under the climb's because of where it sits. Degree 10 is 2349Hz —
+     * the fundamental itself is inside the 2-5kHz band the ear peaks at, so thinning its
+     * partials alone did nothing; the note's own level had to come down. It is still the
+     * highest and last thing in the game, just no longer the loudest.
+     */
+    peak: { degree: 10, delay: 0.18, gain: 0.088, decay: 2.4 },
     /** [ratio above D3, gain, start, attack, decay] — the root holding underneath. */
     drones: [[1, 0.2, 0, 0.6, 4]],
     wet: 0.66
@@ -307,16 +314,26 @@ class AudioManager {
         break;
       }
       case 'ascent': {
-        const ring = (at, degree, amp, decay) => {
-          for (const [mult, partialAmp, attack] of ARRIVAL_PARTIALS) {
-            this.#bell(at, pentatonic(degree) * pitch * mult, amp * partialAmp, attack, decay, def.wet);
-          }
+        /**
+         * Upper partials thin out as the phrase climbs. The resolution sits at degree 10 —
+         * 2349Hz — and at full strength its second partial lands at 4698Hz, the most
+         * sensitive part of human hearing, ringing alone after the bed has begun to fade.
+         * That was the whole of the sting at the end. The fundamental is untouched, so the
+         * note is as high as it ever was; only its brightness comes off.
+         */
+        const ring = (at, degree, amp, decay, slower = 1) => {
+          const bright = Math.max(0.22, 1 - degree * 0.09);
+          ARRIVAL_PARTIALS.forEach(([mult, partialAmp, attack], i) => {
+            this.#bell(at, pentatonic(degree) * pitch * mult, amp * partialAmp * (i === 0 ? 1 : bright),
+              attack * slower, decay, def.wet);
+          });
         };
         def.degrees.forEach((degree, i) => {
           ring(t + i * def.step, degree, def.gain * volume * (1 - i * def.falloff), def.decay);
         });
         const top = def.peak;
-        ring(t + def.degrees.length * def.step + top.delay, top.degree, top.gain * volume, top.decay);
+        // A slower bloom on the resolution too: it is the one note with nothing to hide behind.
+        ring(t + def.degrees.length * def.step + top.delay, top.degree, top.gain * volume, top.decay, 1.5);
         for (const [ratio, gain, start, attack, decay] of def.drones) {
           this.#bell(t + start, (pentatonic(0) / 4) * pitch * ratio, gain * volume, attack, decay, def.wet);
         }
