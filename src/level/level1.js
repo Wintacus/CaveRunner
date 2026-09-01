@@ -144,13 +144,22 @@ const hazards = [
   { type: 'stalagmite', x: 172, y: 14 },
   { type: 'stalagmite', x: 186, y: 14 },
 
-  // Segment 2 — one static obstacle only; bats are the new idea here.
+  // Segment 2 — one static obstacle only; bats are the new idea here. The stalactite is
+  // not a fifth thing to dodge: it hangs over a pit the player already has to jump, and
+  // changes the shape of that jump rather than adding another.
   { type: 'stalagmite', x: 340, y: 14 },
+  { type: 'stalactite', x: 323, len: 5 }, // over the pit at 321-325
 
   // Segment 3 — statics combined with both creature types.
   { type: 'stalagmite', x: 496, y: 14 },
-  { type: 'spikes', x: 545, y: 14, w: 3 },
+  { type: 'stalactite', x: 423, len: 5 }, // over the pit at 421-425
+  // Widened from 3. At 15px tall a spike run is cheap to clear vertically, so its length
+  // is the only thing that asks anything — three tiles was inside a bare hop.
+  { type: 'spikes', x: 545, y: 14, w: 5 },
   { type: 'stalactite', x: 563, len: 5 }, // over the pit at 561-565: punishes over-jumping
+  // A spike run set well clear of the stalagmite at 496 — 288px between them, comfortably
+  // more than the 192px shortest hop, so they are two obstacles and not one wall.
+  { type: 'spikes', x: 484, y: 14, w: 4 },
   { type: 'stalagmite', x: 606, y: 12 }, // kept clear of the pit lip at 616 (see below)
   { type: 'stalagmite', x: 638, y: 14 }, // fills the long approach to checkpoint 3
 
@@ -161,8 +170,12 @@ const hazards = [
   // early hop plus a buffered re-jump. The ledge has nowhere else to put it either — the
   // landing zone from the previous pit covers its left half, and the bat at 734 covers
   // the rest — so it is gone. The finale still remixes bats, a spider and spikes.
-  { type: 'spikes', x: 756, y: 14, w: 3 },
-  { type: 'spikes', x: 794, y: 14, w: 3 } // last beat before the run-in to the goal
+  // len 4, not 5: this pit launches from a ledge at row 12, and the ceiling is flat, so
+  // there is two tiles less headroom here than over a floor-level pit.
+  { type: 'stalactite', x: 703, len: 4 }, // over the pit at 701-705
+  { type: 'stalactite', x: 778, len: 5 }, // over the last pit, 776-781
+  { type: 'spikes', x: 756, y: 14, w: 5 },
+  { type: 'spikes', x: 794, y: 14, w: 4 } // last beat before the run-in to the goal
 ];
 
 const creatures = [

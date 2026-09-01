@@ -720,7 +720,13 @@ function makeStalagmite(scene) {
  * case is not stretched. It used to be a 48x32 trapezoid blown up five times, which is why
  * it hung there as a blunt grey slab with a flat bottom.
  */
-const STALACTITE_CROP = [138, 6, 114, 304]; // the centre spike within spikes-rose.webp
+/**
+ * The centre spike within spikes-rose.webp, measured rather than eyeballed: its tip is a
+ * single pixel at row 4, x=192. The first attempt cropped from row 6 — two rows BELOW the
+ * point — which after the flip put a flat cut edge across the bottom of the texture exactly
+ * where the tip should be. Start at row 0 so the point arrives intact.
+ */
+const STALACTITE_CROP = [135, 0, 114, 304];
 
 function makeStalactite(scene) {
   const w = 48;
@@ -738,7 +744,7 @@ function makeStalactite(scene) {
       ctx.drawImage(art, sx, sy, sw, sh, 0, 0, w, h);
       ctx.restore();
       // The exact point the player has to clear is the brightest thing on it.
-      glowBlob(ctx, w / 2, h - 6, 12, 0xe6e0ff, 0.8);
+      glowBlob(ctx, w / 2, h - 4, 12, 0xe6e0ff, 0.8);
       return;
     }
 

@@ -2,7 +2,7 @@
 // compiled to a Tiled map. Catches "this gap is impossible" / "this stalagmite is
 // floating in the air" mistakes that are otherwise only findable by playing.
 import { PLATFORMS, ENTITIES, SEGMENTS, MAP_W, MAP_H, TILE, FLOOR_TOP, CEIL_BOTTOM } from '../src/level/level1.js';
-import { reachForRise, apexHeight, arcPoints, holdForGap } from '../src/physics/jump-model.js';
+import { reachForRise, apexHeight, arcPoints, holdForGap, trajectory } from '../src/physics/jump-model.js';
 import { spiderY, batY } from '../src/physics/creature-motion.js';
 import {
   RUN_SPEED,
@@ -95,9 +95,18 @@ for (const e of ENTITIES) {
   if (e.x < 0 || e.x > MAP_W - 1) errors.push(`${e.type} at x=${e.x} is outside the map`);
 
   if (grounded.has(e.type)) {
-    const top = solidTop.get(Math.round(e.x));
-    if (top === undefined) errors.push(`${e.type} at x=${e.x} is floating over a pit`);
-    else if (top !== e.y) errors.push(`${e.type} at x=${e.x} sits at row ${e.y} but the surface there is row ${top}`);
+    // Every tile of a run, not just its anchor. A four-wide spike run placed two tiles
+    // before a lip has half of itself hanging over the pit, and checking only e.x would
+    // wave that through.
+    const span = e.type === 'spikes' ? (e.w || 1) : 1;
+    for (let i = 0; i < span; i++) {
+      const at = Math.round(e.x) + i;
+      const top = solidTop.get(at);
+      if (top === undefined) errors.push(`${e.type} at x=${e.x} covers x=${at}, which is over a pit`);
+      else if (top !== e.y) {
+        errors.push(`${e.type} at x=${e.x} covers x=${at} at row ${e.y} but the surface there is row ${top}`);
+      }
+    }
   }
 
   if (e.type === 'sign') {
@@ -498,6 +507,100 @@ for (const e of ENTITIES) {
   }
 }
 
+// --- can a jump actually get over it? ----------------------------------------
+/**
+ * Body heights above the surface, in pixels, matching the Arcade bodies in entities.js.
+ * A stalagmite's 40px body sits 26px down a 68px sprite drawn from its base, so it stands
+ * ~42px proud; a spike's 15px body in a 30px sprite stands ~15px.
+ *
+ * This rule did not exist while every hazard was one tile wide, which is the only reason
+ * its absence never showed. The moment runs widen or sit next to each other, "can the
+ * player clear this" stops being obvious: the arc has to stay above the obstacle for its
+ * whole length plus the player's own width, and a full-hold jump is only airborne so long.
+ * An unclearable run is a wall the player is asked to walk into, and nothing here would
+ * have said so.
+ *
+ * Hazards are checked as CLUSTERS, not individually. Two runs a tile apart cannot be taken
+ * as two jumps — there is nowhere to land between them — so what matters is the span from
+ * the first tip to the last, at the height of the tallest thing in it.
+ */
+const HAZARD_RISE = { stalagmite: 42, spikes: 15 };
+
+/** The horizontal span of a full-hold jump that stays at least `rise` px off the ground. */
+function spanAbove(rise) {
+  const above = trajectory().filter((p) => -p.y >= rise);
+  return above.length ? above[above.length - 1].x - above[0].x : 0;
+}
+
+const grounds = ENTITIES.filter((e) => HAZARD_RISE[e.type] !== undefined)
+  .map((e) => ({ e, left: e.x, right: e.x + (e.type === 'spikes' ? (e.w || 1) - 1 : 0) }))
+  .sort((a, b) => a.left - b.left);
+
+const clusters = [];
+for (const g of grounds) {
+  const last = clusters[clusters.length - 1];
+  // Landing between two hazards needs at least the shortest hop's worth of clear ground.
+  if (last && (g.left - last.right) * TILE < MIN_HOP_PX) {
+    last.right = Math.max(last.right, g.right);
+    last.members.push(g.e);
+  } else {
+    clusters.push({ left: g.left, right: g.right, members: [g.e] });
+  }
+}
+
+for (const c of clusters) {
+  const rise = Math.max(...c.members.map((m) => HAZARD_RISE[m.type]));
+  const runPx = (c.right - c.left + 1) * TILE;
+  const need = runPx + PLAYER_BODY_W;
+  const span = spanAbove(rise + 4); // a little daylight over the tip
+  const what = c.members.length > 1
+    ? `${c.members.length} hazards from x=${c.left} to x=${c.right}`
+    : `${c.members[0].type} at x=${c.left}`;
+  if (span < need) {
+    errors.push(
+      `${what} spans ${runPx}px at ${rise}px tall, but a full-hold jump only stays above it ` +
+        `for ${span.toFixed(0)}px — a runner needs ${need.toFixed(0)}px to clear it`
+    );
+  } else if (span < need + 40) {
+    warnings.push(`${what} leaves only ${(span - need).toFixed(0)}px of margin on a full-hold jump`);
+  }
+}
+
+// --- stalactites over pits ---------------------------------------------------
+/**
+ * A stalactite over a pit is a corridor: the player has to cross the gap while staying
+ * under the tip. That is a deliberate and good beat — the one at 563 exists to punish
+ * over-jumping — but it is only fair if the SHORTEST hold that crosses the gap fits
+ * underneath. Otherwise the pit demands a jump and the ceiling forbids it.
+ *
+ * Take-off height is the part that is easy to get wrong by eye: the ceiling is flat, so a
+ * pit launched from a raised ledge has far less headroom than one at floor level. Row 14
+ * pits take a len of 7; row 11 ledges take 4.
+ */
+for (const e of ENTITIES) {
+  if (e.type !== 'stalactite') continue;
+  const pit = pits.find((p) => e.x >= p.start - 1 && e.x <= p.end + 1);
+  if (!pit) continue;
+  const rise = (pit.fromTop - pit.toTop) * TILE;
+  const hold = holdForGap(pit.w * TILE, rise);
+  if (hold === null) continue; // the gap itself is unmakeable; the gap rules report that
+  const headY = pit.fromTop * TILE - (apexHeight(hold) + PLAYER_BODY_H);
+  const tipY = (CEIL_BOTTOM + e.len) * TILE;
+  const clearance = headY - tipY;
+  if (clearance < 0) {
+    errors.push(
+      `stalactite at x=${e.x} (len ${e.len}) hangs to y=${tipY}px, but the shortest hold that ` +
+        `crosses the pit at ${pit.start}-${pit.end} puts the runner's head at y=${headY.toFixed(0)}px — ` +
+        `the pit demands a jump the ceiling forbids`
+    );
+  } else if (clearance < TILE) {
+    warnings.push(
+      `stalactite at x=${e.x} leaves only ${clearance.toFixed(0)}px between the tip and the head of ` +
+        `the shortest hold that crosses its pit`
+    );
+  }
+}
+
 // --- hazards before pit lips -------------------------------------------------
 // Hopping a ground hazard commits the player to a fixed arc. The shortest jump the
 // controls can produce still carries ~150px of airtime, so a hazard sitting closer than
@@ -511,9 +614,12 @@ const hoppables = [
 ].sort((a, b) => a.x - b.x);
 
 for (const e of hoppables) {
-  const lip = pitStarts.find((x) => x > e.x);
+  // A spike run's far edge is what matters here, not where it starts. Measuring from the
+  // left edge of a 4-tile run overstates the run-up to the next lip by three tiles.
+  const right = e.x + (e.type === 'spikes' ? (e.w || 1) - 1 : 0);
+  const lip = pitStarts.find((x) => x > right);
   if (lip === undefined) continue;
-  const gapPx = (lip - e.x) * TILE;
+  const gapPx = (lip - right) * TILE;
   if (gapPx < MIN_HOP_PX) {
     errors.push(
       `${e.type} at x=${e.x} is ${gapPx.toFixed(0)}px before the pit lip at ${lip}, closer than the ` +
