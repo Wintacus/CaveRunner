@@ -50,7 +50,7 @@ const SOUNDS = {
   land: {
     type: 'bound', step: -1,
     freq: [180, 62], dur: 0.12, wave: 'sine', gain: 0.08, noise: 0.07,
-    note: { gain: 0.05, decay: 0.5 }, wet: 0.35
+    note: { gain: 0.04, decay: 0.35 }, wet: 0.55
   },
   /**
    * The pickup. Three rising pentatonic bells with a slow bloom — see TWINKLE below for why
@@ -192,7 +192,7 @@ const PING_PARTIALS = [[1, 1], [2, 0.3], [3, 0.1], [4.2, 0.04]];
 const TOLL_PARTIALS = [[1, 1], [2.32, 0.3], [3.5, 0.13], [4.6, 0.06]];
 const SCATTER_PARTIALS = [[1, 1], [2.7, 0.18]];
 /** Quick but not sharp: two partials, for sounds that fire ninety-odd times a run. */
-const MOTION_PARTIALS = [[1, 1, 0.008], [2, 0.12, 0.02]];
+const MOTION_PARTIALS = [[1, 1, 0.008], [2, 0.05, 0.02]];
 
 /**
  * Motion carries a pitch, and it WALKS: every jump steps up the scale, every landing steps
@@ -207,7 +207,7 @@ const MOTION_PARTIALS = [[1, 1, 0.008], [2, 0.12, 0.02]];
  * the line into a repeating descent, which is what stepping only downward would give.
  * Landing is also the better half to keep: it is the resolution of the gesture.
  *
- * Degrees -8..-1 is 196-523Hz, an octave under the crystal's 294-784. That separation is
+ * Degrees -11..-4 is 131-349Hz, well under the crystal's 294-784. That separation is
  * deliberate and it follows from a measurement: 67 of the 98 jump/land events in a run land
  * within 120ms of a crystal pickup, so these are heard *simultaneously* with the melody far
  * more often than between its notes. They cannot be a second tune; there is no room. They
@@ -216,7 +216,7 @@ const MOTION_PARTIALS = [[1, 1, 0.008], [2, 0.12, 0.02]];
  * Pentatonic is what makes that safe: no semitones and no tritone, so a jump colliding with
  * a pickup is consonant whichever two notes meet.
  */
-const MOTION_RANGE = [-8, -1];
+const MOTION_RANGE = [-11, -4];
 
 /**
  * A convolution reverb with no impulse-response file: exponentially decaying noise is the
@@ -246,7 +246,7 @@ class AudioManager {
     this.unlocked = false;
     this.noiseBuffer = null;
     /** Where the jump/land walk currently sits. Starts mid-range; bounded, so it never runs away. */
-    this.motionRung = -5;
+    this.motionRung = -7;
   }
 
   /** Build the context without playing anything (safe to call before any gesture). */
