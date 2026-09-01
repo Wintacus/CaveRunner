@@ -379,7 +379,10 @@ export class GameScene extends Phaser.Scene {
       this.sparkles.emitParticleAt(marker.x, marker.y - 60, 14);
       audio.play('checkpoint');
       haptics.checkpoint();
-      this.events.emit('toast', 'CHECKPOINT', COLORS.teal);
+      // ice, not teal: teal is the cave's own colour, so a teal toast over the cyan
+      // ceiling was near-invisible whatever outline it had. It also splits the toasts by
+      // meaning — amber for shield state, white for progress.
+      this.events.emit('toast', 'CHECKPOINT', COLORS.ice);
       return;
     }
 

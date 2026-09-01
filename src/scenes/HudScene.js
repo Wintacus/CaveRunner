@@ -189,11 +189,18 @@ export class HudScene extends Phaser.Scene {
     this.toast = this.add
       .text(GAME_WIDTH / 2, GAME_HEIGHT * 0.22, '', {
         fontFamily: 'sans-serif',
-        fontSize: '30px',
+        fontSize: '32px',
         fontStyle: 'bold',
         color: '#3fe0c8'
       })
       .setOrigin(0.5)
+      // A dark outline, not a shadow. The toast draws over whatever the cave happens to be
+      // doing at that moment, and the cave is bright cyan with magenta crystals in it — a
+      // drop shadow only helps on one side, while an outline separates the glyphs from any
+      // background at all. CHECKPOINT was teal on that cyan and effectively invisible; the
+      // amber shield toasts survived only because amber happens not to be a cave colour.
+      .setStroke('#04070c', 7)
+      .setShadow(0, 3, '#04070c', 6, false, true)
       .setAlpha(0);
   }
 
