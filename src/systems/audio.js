@@ -44,7 +44,7 @@ const SOUNDS = {
    * it is built the way it is. The loudest thing in the game that fires more than 50 times
    * a run, which is as high as the ladder lets it go.
    */
-  crystal: { type: 'twinkle', grains: 3, spread: 0.075, decay: 0.45, gain: 0.074, wet: 0.48 },
+  crystal: { type: 'twinkle', grains: 3, spread: 0.075, decay: 0.45, gain: 0.055, wet: 0.48 },
   checkpoint: { type: 'arp', notes: [523, 659, 880], step: 0.075, dur: 0.2, gain: 0.22 },
   powerup: { type: 'arp', notes: [392, 523, 659, 784], step: 0.06, dur: 0.26, gain: 0.285 },
   hit: { type: 'hit', freq: [260, 55], dur: 0.34, gain: 0.3, noise: 0.32 },
