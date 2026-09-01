@@ -88,7 +88,44 @@ const isSolid = (x, y) => {
 };
 
 // --- entities ---------------------------------------------------------------
-const grounded = new Set(['stalagmite', 'spikes', 'checkpoint', 'goal']);
+/**
+ * Hazard geometry, declared before anything uses it.
+ *
+ * `HAZARD_RISE` is body height above the surface in pixels, matching entities.js: a
+ * stalagmite's 40px body sits 26px down a 68px sprite drawn from its base, so it stands
+ * ~42px proud; a small spike stands ~15px; a big spike 66px.
+ */
+const BIGSPIKE_BODY_W = 60;
+const HAZARD_RISE = { stalagmite: 42, spikes: 15, bigspikes: 66 };
+
+/**
+ * How far a hazard reaches either side of its anchor, in tiles. A `bigspikes` group is
+ * three 60px bodies on a 48px step, so its collidable span is 156px centred on x — wider
+ * than any single-tile hazard, and the reason every rule below asks rather than assumes.
+ */
+/**
+ * Collidable width in PIXELS. The tile version below rounds outward, which is right for
+ * "which tiles must be solid ground" and wrong for "can a jump clear this" — rounding a
+ * 156px group out to 6 tiles overstates it by 36px and reports a fair hazard as tight.
+ */
+function hazardSpanPx(e) {
+  if (e.type === 'spikes') return (e.w || 1) * TILE;
+  if (e.type === 'bigspikes') return ((e.count || 3) - 1) * (e.step || 48) + BIGSPIKE_BODY_W;
+  return TILE;
+}
+
+function hazardTiles(e) {
+  if (e.type === 'spikes') return { from: e.x, to: e.x + (e.w || 1) - 1 };
+  if (e.type === 'bigspikes') {
+    const count = e.count || 3;
+    const step = e.step || 48;
+    const halfPx = ((count - 1) * step + BIGSPIKE_BODY_W) / 2;
+    return { from: Math.floor(e.x - halfPx / TILE), to: Math.ceil(e.x + halfPx / TILE) - 1 };
+  }
+  return { from: e.x, to: e.x };
+}
+
+const grounded = new Set(['stalagmite', 'spikes', 'bigspikes', 'checkpoint', 'goal']);
 const hazardXs = [];
 
 for (const e of ENTITIES) {
@@ -98,9 +135,8 @@ for (const e of ENTITIES) {
     // Every tile of a run, not just its anchor. A four-wide spike run placed two tiles
     // before a lip has half of itself hanging over the pit, and checking only e.x would
     // wave that through.
-    const span = e.type === 'spikes' ? (e.w || 1) : 1;
-    for (let i = 0; i < span; i++) {
-      const at = Math.round(e.x) + i;
+    const reach = hazardTiles(e);
+    for (let at = Math.round(reach.from); at <= Math.round(reach.to); at++) {
       const top = solidTop.get(at);
       if (top === undefined) errors.push(`${e.type} at x=${e.x} covers x=${at}, which is over a pit`);
       else if (top !== e.y) {
@@ -524,7 +560,6 @@ for (const e of ENTITIES) {
  * as two jumps — there is nowhere to land between them — so what matters is the span from
  * the first tip to the last, at the height of the tallest thing in it.
  */
-const HAZARD_RISE = { stalagmite: 42, spikes: 15 };
 
 /** The horizontal span of a full-hold jump that stays at least `rise` px off the ground. */
 function spanAbove(rise) {
@@ -533,7 +568,7 @@ function spanAbove(rise) {
 }
 
 const grounds = ENTITIES.filter((e) => HAZARD_RISE[e.type] !== undefined)
-  .map((e) => ({ e, left: e.x, right: e.x + (e.type === 'spikes' ? (e.w || 1) - 1 : 0) }))
+  .map((e) => ({ e, left: hazardTiles(e).from, right: hazardTiles(e).to }))
   .sort((a, b) => a.left - b.left);
 
 const clusters = [];
@@ -550,7 +585,11 @@ for (const g of grounds) {
 
 for (const c of clusters) {
   const rise = Math.max(...c.members.map((m) => HAZARD_RISE[m.type]));
-  const runPx = (c.right - c.left + 1) * TILE;
+  // Pixel extents, not tile-rounded ones: for a single hazard that is its own width, and
+  // for a run of them it is first left edge to last right edge.
+  const runPx = c.members.length === 1
+    ? hazardSpanPx(c.members[0])
+    : (c.right - c.left + 1) * TILE;
   const need = runPx + PLAYER_BODY_W;
   const span = spanAbove(rise + 4); // a little daylight over the tip
   const what = c.members.length > 1
@@ -609,14 +648,14 @@ for (const e of ENTITIES) {
 
 const pitStarts = pits.map((p) => p.start);
 const hoppables = [
-  ...ENTITIES.filter((e) => e.type === 'stalagmite' || e.type === 'spikes'),
+  ...ENTITIES.filter((e) => HAZARD_RISE[e.type] !== undefined),
   ...groundBlockers
 ].sort((a, b) => a.x - b.x);
 
 for (const e of hoppables) {
   // A spike run's far edge is what matters here, not where it starts. Measuring from the
   // left edge of a 4-tile run overstates the run-up to the next lip by three tiles.
-  const right = e.x + (e.type === 'spikes' ? (e.w || 1) - 1 : 0);
+  const right = hazardTiles(e).to;
   const lip = pitStarts.find((x) => x > right);
   if (lip === undefined) continue;
   const gapPx = (lip - right) * TILE;
@@ -701,7 +740,7 @@ notes.push(
   `entities: ${ENTITIES.filter((e) => e.type === 'crystal').length} crystals, ` +
     `${ENTITIES.filter((e) => e.type === 'bat').length} bats, ` +
     `${ENTITIES.filter((e) => e.type === 'spider').length} spiders, ` +
-    `${ENTITIES.filter((e) => ['stalagmite', 'stalactite', 'spikes'].includes(e.type)).length} static hazards`
+    `${ENTITIES.filter((e) => ['stalagmite', 'stalactite', 'spikes', 'bigspikes'].includes(e.type)).length} static hazards`
 );
 
 export function validateLevel({ silent = false } = {}) {

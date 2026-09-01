@@ -153,13 +153,15 @@ const hazards = [
   // Segment 3 — statics combined with both creature types.
   { type: 'stalagmite', x: 496, y: 14 },
   { type: 'stalactite', x: 423, len: 5 }, // over the pit at 421-425
-  // Widened from 3. At 15px tall a spike run is cheap to clear vertically, so its length
-  // is the only thing that asks anything — three tiles was inside a bare hop.
-  { type: 'spikes', x: 545, y: 14, w: 5 },
+  // Three overlapping big spikes rather than five small ones in a row. A row of identical
+  // one-tile sprites reads as tiling; three interlocking silhouettes read as a ridge. And
+  // at 58px of body against 15px it is a committed jump rather than a hop — the length was
+  // previously the only thing these asked for, because they were barely off the ground.
+  { type: 'bigspikes', x: 545, y: 14 },
   { type: 'stalactite', x: 563, len: 5 }, // over the pit at 561-565: punishes over-jumping
-  // A spike run set well clear of the stalagmite at 496 — 288px between them, comfortably
-  // more than the 192px shortest hop, so they are two obstacles and not one wall.
-  { type: 'spikes', x: 484, y: 14, w: 4 },
+  // Set clear of the stalagmite at 496 by more than the 192px shortest hop, so the two are
+  // separate obstacles rather than one unclearable wall.
+  { type: 'bigspikes', x: 484, y: 14 },
   { type: 'stalagmite', x: 606, y: 12 }, // kept clear of the pit lip at 616 (see below)
   { type: 'stalagmite', x: 638, y: 14 }, // fills the long approach to checkpoint 3
 
@@ -174,8 +176,8 @@ const hazards = [
   // there is two tiles less headroom here than over a floor-level pit.
   { type: 'stalactite', x: 703, len: 4 }, // over the pit at 701-705
   { type: 'stalactite', x: 778, len: 5 }, // over the last pit, 776-781
-  { type: 'spikes', x: 756, y: 14, w: 5 },
-  { type: 'spikes', x: 794, y: 14, w: 4 } // last beat before the run-in to the goal
+  { type: 'bigspikes', x: 756, y: 14 },
+  { type: 'bigspikes', x: 794, y: 14 } // last beat before the run-in to the goal
 ];
 
 const creatures = [

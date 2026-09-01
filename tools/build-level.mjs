@@ -77,6 +77,9 @@ const objects = ENTITIES.map((e) => {
       x = (e.x + e.w / 2) * TILE;
       props.push(prop('width', e.w * TILE));
       break;
+    case 'bigspikes':
+      props.push(prop('count', e.count || 3), prop('step', e.step || 48));
+      break;
     case 'checkpoint':
       props.push(prop('index', e.index));
       break;

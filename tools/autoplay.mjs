@@ -102,13 +102,22 @@ const result = await page.evaluate(async (frameMs) => {
     }
 
     // 2. Static hazards on the ground in front of us.
+    //
+    // `big` matters: a big-spike ridge is 66px tall and three of them overlap into ~156px
+    // of obstacle, so it needs an earlier take-off and a much longer hold than the hop that
+    // clears a 15px spike. Answering both with one fixed hop is how the bot ended up
+    // walking into the ridge twenty times in a row.
     let hazardDist = Infinity;
+    let hazardBig = false;
     for (const pool of scene.director.pools.values()) {
       for (const e of pool.active) {
         const type = e.def.type;
-        if (type !== 'stalagmite' && type !== 'spike') continue;
+        if (type !== 'stalagmite' && type !== 'spike' && type !== 'bigspike') continue;
         const d = e.x - p.x;
-        if (d > 0 && d < 200) hazardDist = Math.min(hazardDist, d);
+        if (d > 0 && d < 260) {
+          if (d < hazardDist) hazardBig = type === 'bigspike';
+          hazardDist = Math.min(hazardDist, d);
+        }
       }
     }
 
@@ -139,17 +148,34 @@ const result = await page.evaluate(async (frameMs) => {
         }
       }
       const rise = landing === null ? 0 : feet - landing;
-      const hold = gap > 130 || rise > 40 ? 270 : gap > 90 ? 170 : 110;
+      let hold = gap > 130 || rise > 40 ? 270 : gap > 90 ? 170 : 110;
+
+      // A stalactite over the gap turns a wide pit into a corridor: the jump has to be long
+      // enough to cross and low enough to pass under. The full hold that clears the gap on
+      // its own drives the runner's head straight into the tip, which is exactly what those
+      // hazards are placed to punish — so cap the hold when one hangs over the crossing.
+      // Every jump carries at least ~192px of travel even from a bare tap, so a short hold
+      // still clears any gap in this level; only the height has to come down.
+      for (const pool of scene.director.pools.values()) {
+        for (const e of pool.active) {
+          if (e.def.type !== 'stalactite') continue;
+          const d = e.x - p.x;
+          if (d > -40 && d < 300) hold = Math.min(hold, 110);
+        }
+      }
+
       p.requestJump();
       bot.holdMs = hold;
       return;
     }
 
     // Hop over anything in the lane. Enough height to clear a low creature or a
-    // stalagmite, not so much that we sail into whatever is above.
-    if (hazardDist < 86 || creatureDist < 80 + jitter() * 26) {
+    // stalagmite, not so much that we sail into whatever is above — except for a big-spike
+    // ridge, which needs the committed jump it was built to demand.
+    const trigger = hazardBig ? 150 + jitter() * 20 : 86;
+    if (hazardDist < trigger || creatureDist < 80 + jitter() * 26) {
       p.requestJump();
-      bot.holdMs = 150;
+      bot.holdMs = hazardBig && hazardDist < trigger ? 270 : 150;
     }
   };
 

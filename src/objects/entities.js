@@ -91,6 +91,21 @@ export class Stalagmite extends Entity {
   }
 }
 
+/**
+ * The big spike. 66px of body against the small spike's 15px, and against a stalagmite's
+ * 42px — tall enough that clearing it is a committed jump rather than a hop, which is the
+ * whole reason it exists. The body covers all but 8px of the sprite, so what you can see is
+ * what will hurt you.
+ */
+export class SpikeBig extends Entity {
+  constructor(scene) {
+    super(scene, KEYS.spikeBig);
+    this.setOrigin(0.5, 1).setDepth(12);
+    this.body.setSize(60, 66, false);
+    this.body.setOffset(6, 8);
+  }
+}
+
 export class Spike extends Entity {
   constructor(scene) {
     super(scene, KEYS.spike);
@@ -417,6 +432,7 @@ export class Goal extends Entity {
 export const ENTITY_CLASSES = {
   stalagmite: Stalagmite,
   spike: Spike,
+  bigspike: SpikeBig,
   stalactite: Stalactite,
   bat: Bat,
   spider: Spider,
@@ -430,6 +446,7 @@ export const ENTITY_CLASSES = {
 export const ENTITY_GROUPS = {
   stalagmite: 'hazards',
   spike: 'hazards',
+  bigspike: 'hazards',
   stalactite: 'hazards',
   bat: 'creatures',
   spider: 'creatures',

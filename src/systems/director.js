@@ -129,6 +129,19 @@ export function parseEntities(objects, tileSize) {
     const type = obj.type || obj.name;
     if (type === 'spawn') continue;
 
+    /**
+     * Three overlapping big spikes rather than a row of one-tile sprites. The step is
+     * smaller than the sprite so they interlock into one ridge; spacing them edge to edge
+     * would just be tiling at a larger size.
+     */
+    if (type === 'bigspikes') {
+      const count = props.count || 3;
+      const step = props.step || 48;
+      const left = obj.x - ((count - 1) * step) / 2;
+      for (let i = 0; i < count; i++) defs.push({ type: 'bigspike', x: left + i * step, y: obj.y });
+      continue;
+    }
+
     if (type === 'spikes') {
       const count = Math.max(1, Math.round((props.width || tileSize) / tileSize));
       const left = obj.x - (count * tileSize) / 2 + tileSize / 2;

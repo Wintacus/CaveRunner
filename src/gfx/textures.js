@@ -39,6 +39,7 @@ export const KEYS = {
   stalagmite: 'stalagmite',
   stalactite: 'stalactite',
   spike: 'spike',
+  spikeBig: 'spike_big',
   glow: 'glow',
   spark: 'spark',
   bgFar: 'bg_far',
@@ -716,9 +717,13 @@ function makeStalagmite(scene) {
  * identical material and lighting as everything else sharp in the level. Drawing it by hand
  * made it read flat and plainer than its neighbours no matter how the facets were faked.
  *
- * Drawn at 160px tall, which is exactly the length the level authors (len: 5), so the common
- * case is not stretched. It used to be a 48x32 trapezoid blown up five times, which is why
- * it hung there as a blunt grey slab with a flat bottom.
+ * Drawn at 96x256 and displayed at 44x160. That is deliberate over-resolution: the source
+ * spike narrows to a SINGLE pixel at its point, and squeezing 304 source rows into 160
+ * texture rows crushed that taper into a stub four pixels wide for four rows before cutting
+ * to nothing — a flat line across the tip. At 256 rows the taper keeps its detail and the
+ * GPU does the final downscale smoothly. The canvas is 96 wide for the same reason: 114
+ * source columns into 48 was squashing it to 0.42 horizontally against 0.53 vertically, so
+ * the aspect was wrong as well. 96x256 matches the crop's own proportions.
  */
 /**
  * The centre spike within spikes-rose.webp, measured rather than eyeballed: its tip is a
@@ -729,8 +734,8 @@ function makeStalagmite(scene) {
 const STALACTITE_CROP = [135, 0, 114, 304];
 
 function makeStalactite(scene) {
-  const w = 48;
-  const h = 160;
+  const w = 96;
+  const h = 256;
   canvasTexture(scene, KEYS.stalactite, w, h, (ctx) => {
     const art = recolouredArt(sourceImage(scene, ART_FILES.spikes.key), HAZARD_TONE);
     if (art) {
@@ -771,6 +776,39 @@ function makeStalactite(scene) {
     ctx.lineTo(w / 2 + 1, h - 2);
     ctx.stroke();
     glowBlob(ctx, w / 2, h - 4, 11, 0xe6e0ff, 0.85);
+  });
+}
+
+/**
+ * The big spike. Not the small one scaled up at render time — a separate texture with the
+ * art drawn into it at size, at the art's own 375:384 proportions, so nothing is stretched.
+ * The level places three of these overlapping instead of five small ones in a row: a row of
+ * identical one-tile sprites reads as tiling, whereas three overlapping silhouettes read as
+ * a ridge.
+ *
+ * 66px of body against the small spike's 15px, which is what makes it a real jump rather
+ * than a hop. See the clearance rule in validate-level.mjs for the ceiling on how tall and
+ * wide a cluster can get before it stops being clearable.
+ */
+function makeSpikeBig(scene) {
+  const w = 72;
+  const h = 74;
+  canvasTexture(scene, KEYS.spikeBig, w, h, (ctx) => {
+    const art = sourceImage(scene, ART_FILES.spikes.key);
+    if (art) {
+      glowBlob(ctx, w / 2, 16, 26, HAZARD_TONE.glow, 0.32);
+      stampRecoloured(ctx, art, 0, 0, w, h, HAZARD_TONE);
+      return;
+    }
+    glowBlob(ctx, w / 2, 16, 26, HAZARD_TONE.glow, 0.4);
+    ctx.fillStyle = hex(0x232a3a);
+    ctx.strokeStyle = rgba(HAZARD_TONE.glow, 0.9);
+    ctx.lineWidth = 2;
+    for (const [cx, tall] of [[16, 44], [36, 66], [56, 40]]) {
+      polygon(ctx, [[cx - 12, h], [cx, h - tall], [cx + 12, h]]);
+      ctx.fill();
+      ctx.stroke();
+    }
   });
 }
 
@@ -1049,6 +1087,7 @@ export function generateTextures(scene, viewHeight) {
   makeGoal(scene);
   makeStalagmite(scene);
   makeStalactite(scene);
+  makeSpikeBig(scene);
   makeSpike(scene);
   makeGlow(scene);
   makeParallax(scene, viewHeight);
