@@ -44,7 +44,28 @@ const SOUNDS = {
    * it is built the way it is. The loudest thing in the game that fires more than 50 times
    * a run, which is as high as the ladder lets it go.
    */
-  crystal: { type: 'twinkle', grains: 3, spread: 0.075, decay: 0.45, gain: 0.055, wet: 0.48 },
+  crystal: {
+    type: 'twinkle',
+    grains: 3,
+    spread: 0.075,
+    decay: 0.45,
+    gain: 0.055,
+    wet: 0.48,
+    /**
+     * Scale degrees the pickup may draw from: D4 up to G5. Deliberately LOW and narrow.
+     * It started two octaves higher and was walked down from there — down, because dropping
+     * the ceiling makes it blend into the bed instead of sitting on top of it, and across a
+     * seventy-second run with 148 of them, blending is what keeps it off the ear. It is
+     * meant to be present, not announced.
+     *
+     * It overlaps the pad's harmonics on purpose. The pad's chord tones sit at 87-220Hz with
+     * saws opening through a 420-900Hz filter, so this range shares the room with them
+     * rather than cutting through it. The gain was NOT raised to compensate for sitting
+     * lower — the reduced presence is the point, not a side effect to correct.
+     */
+    floor: -5,
+    top: 2
+  },
   checkpoint: { type: 'arp', notes: [523, 659, 880], step: 0.075, dur: 0.2, gain: 0.22 },
   powerup: { type: 'arp', notes: [392, 523, 659, 784], step: 0.06, dur: 0.26, gain: 0.285 },
   hit: { type: 'hit', freq: [260, 55], dur: 0.34, gain: 0.3, noise: 0.32 },
@@ -98,13 +119,12 @@ const SOUNDS = {
 const PENTATONIC = [587.33, 698.46, 783.99, 879.87, 1046.5];   // D5 F5 G5 A5 C6
 
 /**
- * Degree 0 is D5 and every 5 degrees climbs an octave, so a voice can reach as high as it
- * needs without the table having to enumerate octaves nothing uses.
+ * Degree 0 is D5; every 5 degrees climbs an octave and negative degrees descend, so a voice
+ * can reach as high or as low as it needs without the table enumerating octaves nothing uses.
+ * The modulo is written the long way because JS keeps the sign: -3 % 5 is -3, not 2.
  */
-const pentatonic = (degree) => PENTATONIC[degree % 5] * Math.pow(2, Math.floor(degree / 5));
-
-/** Highest degree the pickup may reach: two octaves. The win goes above it; nothing else does. */
-const TWINKLE_TOP = 9;
+const pentatonic = (degree) =>
+  PENTATONIC[((degree % 5) + 5) % 5] * Math.pow(2, Math.floor(degree / 5));
 
 const TWINKLE_PARTIALS = [[1, 1, 0.026], [2, 0.15, 0.06], [3, 0.02, 0.095]];
 
@@ -221,11 +241,12 @@ class AudioManager {
       case 'twinkle': {
         // Start somewhere in the lower part of the scale, then step upward: rising reads as
         // "gained something" where falling reads as losing it.
-        let rung = Math.floor(Math.random() * (TWINKLE_TOP + 1) * 0.6);
+        // Start somewhere in the lower part of the range, so there is room to climb.
+        let rung = def.floor + Math.floor(Math.random() * (def.top - def.floor + 1) * 0.6);
         for (let g = 0; g < def.grains; g++) {
           const at = t + (g * def.spread) / (def.grains - 1);
           if (g > 0) {
-            rung = Math.min(TWINKLE_TOP, rung + 1 + Math.floor(Math.random() * 2));
+            rung = Math.min(def.top, rung + 1 + Math.floor(Math.random() * 2));
           }
           // A few cents of wobble, so no two pickups are ever bit-identical.
           const freq = pentatonic(rung) * pitch * (0.997 + Math.random() * 0.006);
