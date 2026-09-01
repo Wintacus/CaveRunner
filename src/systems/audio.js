@@ -26,7 +26,15 @@
 
 const SOUNDS = {
   /** Push-off: the moment the finger goes down. */
-  jump: { type: 'blip', freq: [430, 700], dur: 0.09, wave: 'triangle', gain: 0.14, noise: 0.044 },
+  /**
+   * Push-off. Carries a note as well as a body — see MOTION_RANGE. Its physical layer is
+   * quieter than it was, because the note is now doing some of the work of being noticed.
+   */
+  jump: {
+    type: 'bound', step: 1,
+    freq: [430, 700], dur: 0.07, wave: 'triangle', gain: 0.055, noise: 0.03,
+    note: { gain: 0.052, decay: 0.38 }, wet: 0.35
+  },
   /**
    * Footfall. By far the most-played sound in the game — measured at 3.2 a second of ground
    * time, about 160 in a clean run — so it is built to disappear into the background rather
@@ -38,7 +46,12 @@ const SOUNDS = {
    */
   step: { type: 'thud', freq: [150, 68], dur: 0.06, wave: 'sine', gain: 0.05, noise: 0.032 },
   /** Landing impact: separate sound, triggered on touchdown. */
-  land: { type: 'thud', freq: [180, 62], dur: 0.13, wave: 'sine', gain: 0.14, noise: 0.084 },
+  /** Landing impact: separate sound, triggered on touchdown. Answers the jump's note. */
+  land: {
+    type: 'bound', step: -1,
+    freq: [180, 62], dur: 0.12, wave: 'sine', gain: 0.08, noise: 0.07,
+    note: { gain: 0.05, decay: 0.5 }, wet: 0.35
+  },
   /**
    * The pickup. Three rising pentatonic bells with a slow bloom — see TWINKLE below for why
    * it is built the way it is. The loudest thing in the game that fires more than 50 times
@@ -178,6 +191,25 @@ const PING_PARTIALS = [[1, 1], [2, 0.3], [3, 0.1], [4.2, 0.04]];
 /** Inharmonic, so the death toll reads as struck metal rather than a note. */
 const TOLL_PARTIALS = [[1, 1], [2.32, 0.3], [3.5, 0.13], [4.6, 0.06]];
 const SCATTER_PARTIALS = [[1, 1], [2.7, 0.18]];
+/** Quick but not sharp: two partials, for sounds that fire ninety-odd times a run. */
+const MOTION_PARTIALS = [[1, 1, 0.008], [2, 0.12, 0.02]];
+
+/**
+ * Jump and land carry a pitch, and it WALKS: every jump steps up the scale, every landing
+ * steps back down, each continuing from wherever the last one left it. That memory is the
+ * point — an independent random note per jump is varied but goes nowhere, while a walk
+ * wanders like a bass line across a run.
+ *
+ * Degrees -8..-1 is 196-523Hz, an octave under the crystal's 294-784. That separation is
+ * deliberate and it follows from a measurement: 67 of the 98 jump/land events in a run land
+ * within 120ms of a crystal pickup, so these are heard *simultaneously* with the melody far
+ * more often than between its notes. They cannot be a second tune; there is no room. They
+ * are harmony underneath the one that already exists, which is why they sit low and quiet.
+ *
+ * Pentatonic is what makes that safe: no semitones and no tritone, so a jump colliding with
+ * a pickup is consonant whichever two notes meet.
+ */
+const MOTION_RANGE = [-8, -1];
 
 /**
  * A convolution reverb with no impulse-response file: exponentially decaying noise is the
@@ -206,6 +238,8 @@ class AudioManager {
     this.enabled = true;
     this.unlocked = false;
     this.noiseBuffer = null;
+    /** Where the jump/land walk currently sits. Starts mid-range; bounded, so it never runs away. */
+    this.motionRung = -5;
   }
 
   /** Build the context without playing anything (safe to call before any gesture). */
@@ -279,19 +313,20 @@ class AudioManager {
 
     switch (def.type) {
       case 'blip':
-      case 'thud':
-      case 'hit': {
-        const osc = this.ctx.createOscillator();
-        const gain = this.ctx.createGain();
-        osc.type = def.wave || 'sawtooth';
-        osc.frequency.setValueAtTime(def.freq[0] * pitch, t);
-        osc.frequency.exponentialRampToValueAtTime(Math.max(20, def.freq[1] * pitch), t + def.dur);
-        gain.gain.setValueAtTime(def.gain * volume, t);
-        gain.gain.exponentialRampToValueAtTime(0.0001, t + def.dur);
-        osc.connect(gain).connect(this.master);
-        osc.start(t);
-        osc.stop(t + def.dur + 0.02);
-        if (def.noise) this.#noise(t, def.dur * 0.6, def.noise * volume, def.type === 'hit' ? 900 : 2400);
+      case 'thud': {
+        this.#body(t, def, volume, pitch);
+        break;
+      }
+      case 'bound': {
+        // The body still takes the caller's detune — that jitter is what stops ninety
+        // repeats becoming a rattle. The NOTE does not: it belongs to the scale, and
+        // detuning it would be the one thing that could make these clash.
+        this.#body(t, def, volume, pitch);
+        const [low, high] = MOTION_RANGE;
+        const move = def.step * (1 + Math.floor(Math.random() * 3));
+        this.motionRung = Math.max(low, Math.min(high, this.motionRung + move));
+        this.#ping(t, pentatonic(this.motionRung), def.note.gain * volume, def.note.decay,
+          0.008, def.wet, MOTION_PARTIALS);
         break;
       }
       case 'twinkle': {
@@ -448,8 +483,12 @@ class AudioManager {
     const steps = 32;
     const curve = new Float32Array(steps);
     for (let i = 0; i < steps; i++) curve[i] = amp * (0.5 - 0.5 * Math.cos((Math.PI * i) / (steps - 1)));
+    // The ramp must end after the curve does, or Web Audio throws NotSupportedError for
+    // overlapping automation and takes the whole sound with it. Every caller today passes a
+    // decay far longer than its attack; this is here so a future one that does not cannot
+    // crash playback.
     gain.gain.setValueCurveAtTime(curve, at, attack);
-    gain.gain.exponentialRampToValueAtTime(0.0001, at + decay);
+    gain.gain.exponentialRampToValueAtTime(0.0001, at + Math.max(decay, attack + 0.01));
 
     osc.connect(gain);
     gain.connect(this.master);
@@ -460,6 +499,21 @@ class AudioManager {
     }
     osc.start(at);
     osc.stop(at + decay + 0.02);
+  }
+
+  /** The physical layer of an impact: a swept tone plus a noise body. */
+  #body(t, def, volume, pitch) {
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+    osc.type = def.wave || 'sawtooth';
+    osc.frequency.setValueAtTime(def.freq[0] * pitch, t);
+    osc.frequency.exponentialRampToValueAtTime(Math.max(20, def.freq[1] * pitch), t + def.dur);
+    gain.gain.setValueAtTime(def.gain * volume, t);
+    gain.gain.exponentialRampToValueAtTime(0.0001, t + def.dur);
+    osc.connect(gain).connect(this.master);
+    osc.start(t);
+    osc.stop(t + def.dur + 0.02);
+    if (def.noise) this.#noise(t, def.dur * 0.6, def.noise * volume, 2400);
   }
 
   /** A struck tone: several partials sharing one fast attack, unlike the twinkle's stagger. */
