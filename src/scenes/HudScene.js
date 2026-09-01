@@ -96,6 +96,11 @@ export class HudScene extends Phaser.Scene {
         padding: { x: 16, y: 12 }
       })
       .setOrigin(0, 0.5)
+      // Outline for legibility, teal glow for looks. The score sits over the cave for the
+      // whole run with nothing behind it, and the glow alone was adding cyan to near-white
+      // text on a cyan background — style working against readability. The dark outline
+      // separates the digits from whatever is behind them; the glow can then stay.
+      .setStroke('#04070c', 6)
       .setShadow(0, 0, '#3fe0c8', 12, false, true);
 
     this.shieldIcon = this.add.image(0, 0, KEYS.mushroom).setScale(0.7).setOrigin(0, 0.5).setAlpha(0.18);

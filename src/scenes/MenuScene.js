@@ -3,6 +3,7 @@ import { GAME_WIDTH, GAME_HEIGHT, COLORS } from '../config/tuning.js';
 import { KEYS } from '../gfx/textures.js';
 import { audio } from '../systems/audio.js';
 import { Parallax } from '../systems/parallax.js';
+import { getSafeArea } from '../systems/lifecycle.js';
 
 /** Start screen. The tap that begins the run is also the gesture that unlocks audio. */
 export class MenuScene extends Phaser.Scene {
@@ -14,7 +15,12 @@ export class MenuScene extends Phaser.Scene {
     this.parallax = new Parallax(this);
     this.drift = 0;
 
+    // Same scrim as the win screen, for the same reason: text over the cave parallax has to
+    // fight a bright cyan background, and the two title cards should read as one treatment.
+    this.add.rectangle(0, 0, GAME_WIDTH, GAME_HEIGHT, 0x05070d, 0.66).setOrigin(0, 0);
+
     const cx = GAME_WIDTH / 2;
+    const safe = getSafeArea(this.game);
 
     this.add
       .text(cx, GAME_HEIGHT * 0.33, 'CAVE', {
@@ -57,10 +63,24 @@ export class MenuScene extends Phaser.Scene {
     this.add
       .text(cx, GAME_HEIGHT * 0.86, 'Tap to jump  ·  hold to jump higher', {
         fontFamily: 'sans-serif',
-        fontSize: '14px',
-        color: '#4a6076'
+        fontSize: '15px',
+        color: '#a8c4d8'
       })
       .setOrigin(0.5);
+
+    /**
+     * Which build this is. Deliberately dim and out of the way — it is a diagnostic, not
+     * part of the title card — but legible enough to read off a phone without zooming.
+     * Bottom LEFT because the fullscreen button lives bottom right.
+     */
+    this.add
+      .text(12, GAME_HEIGHT - safe.bottom - 10, __BUILD_ID__, {
+        fontFamily: 'monospace',
+        fontSize: '13px',
+        color: '#6f8da0'
+      })
+      .setOrigin(0, 1)
+      .setAlpha(0.75);
 
     this.add.rectangle(0, GAME_HEIGHT - 2, GAME_WIDTH, 2, COLORS.teal, 0.35).setOrigin(0, 0);
 
