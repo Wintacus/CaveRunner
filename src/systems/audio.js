@@ -67,14 +67,40 @@ const SOUNDS = {
     top: 2
   },
   checkpoint: { type: 'arp', notes: [523, 659, 880], step: 0.075, dur: 0.2, gain: 0.22 },
-  powerup: { type: 'arp', notes: [392, 523, 659, 784], step: 0.06, dur: 0.26, gain: 0.285 },
-  hit: { type: 'hit', freq: [260, 55], dur: 0.34, gain: 0.3, noise: 0.32 },
   /**
-   * Shield breaking: bright, glassy, falling — deliberately unlike the hit thud. Sits BELOW
-   * `hit` on the ladder: this is the cushioned outcome, you were struck and survived, so it
-   * should not out-shout actual damage.
+   * Shield pickup. The reward, so it belongs to the crystal's family — pentatonic, through
+   * the shared reverb — but warmer, wider and SUSTAINED: a noise swell closing around you,
+   * three bells rising over it, and a fifth left ringing after them. Where a crystal is a
+   * gesture, this is something arriving and then staying.
    */
-  shieldBreak: { type: 'shatter', notes: [1560, 1040, 690], step: 0.045, dur: 0.34, gain: 0.138, noise: 0.138 },
+  powerup: { type: 'ward', gain: 1.13, wet: 0.55 },
+  /**
+   * Death. Modelled on how Ori and Hollow Knight handle it, which is the opposite of an
+   * impact: death reads as DISSIPATION, not collision. Neither game smashes — the meaning is
+   * carried by descending, spreading motion, energy leaving, rather than by a hard hit.
+   *
+   * So: a single deep toll on inharmonic partials, a breath of filtered air, four lights
+   * scattering and falling away above it, and the tonic sagging a minor third flat
+   * underneath. The sag is what stops it resolving; it deflates rather than lands.
+   *
+   * This is also the one place the pentatonic language is allowed to break, because breaking
+   * it is the signal.
+   */
+  hit: { type: 'toll', gain: 1.48, wet: 0.66 },
+  /**
+   * Shield breaking. Literally the pickup's phrase INVERTED — same bells, same register,
+   * falling instead of rising — so the pair reads as a thing given and then taken back
+   * rather than as two unrelated sounds at related moments. Its held fifth is gated off
+   * mid-fall: you hear the sustain STOP, which is the part that says it is gone.
+   *
+   * It opens with a pop. A pop is not a crack: a crack is filtered noise, a pop is PITCHED,
+   * a short sine whose frequency collapses downward in about 25ms. That descending sweep is
+   * the whole character, and it is what makes the moment read as something giving way.
+   *
+   * Sits BELOW `hit` on the ladder: this is the cushioned outcome — you were struck and you
+   * survived — so it has no business out-shouting actual damage.
+   */
+  shieldBreak: { type: 'sever', gain: 0.53, wet: 0.5 },
   /**
    * The win. Built in the crystal's language — pentatonic, staggered-attack sine partials,
    * heavy reverb — so it reads as the pickup's big brother rather than a jingle from another
@@ -132,6 +158,21 @@ const TWINKLE_PARTIALS = [[1, 1, 0.026], [2, 0.15, 0.06], [3, 0.02, 0.095]];
 const ARRIVAL_PARTIALS = [[1, 1, 0.035], [2, 0.16, 0.08], [3, 0.03, 0.12]];
 
 /**
+ * Partials for the three rare sounds. These deliberately do NOT get the crystal's staggered
+ * soft onset: that treatment exists because the pickup fires 148 times a run, and these fire
+ * once or twice. Rarity earns presence, so they lead with a real transient instead.
+ *
+ * Learned the hard way. A first pass gave them 35-120ms attacks and put their energy at
+ * 147-590Hz, which is both where the bed's pad and bass sit AND where A-weighting discounts
+ * the ear by ~15dB — masked and perceptually quiet at once, and inaudible in play despite
+ * measuring correctly on peak. Peak is the wrong yardstick for this; loudness is.
+ */
+const PING_PARTIALS = [[1, 1], [2, 0.3], [3, 0.1], [4.2, 0.04]];
+/** Inharmonic, so the death toll reads as struck metal rather than a note. */
+const TOLL_PARTIALS = [[1, 1], [2.32, 0.3], [3.5, 0.13], [4.6, 0.06]];
+const SCATTER_PARTIALS = [[1, 1], [2.7, 0.18]];
+
+/**
  * A convolution reverb with no impulse-response file: exponentially decaying noise is the
  * standard trick and is indistinguishable from a recorded hall at this length.
  *
@@ -183,11 +224,19 @@ class AudioManager {
     verb.buffer = makeReverbIR(this.ctx, 1.4, 2.6);
     this.wet.connect(verb).connect(this.master);
 
-    // Pre-baked noise, used by the impact sounds.
+    // Pre-baked noise, used by the impact sounds. It fades out across the buffer, which is
+    // what a transient wants.
     const len = Math.floor(this.ctx.sampleRate * 0.4);
     this.noiseBuffer = this.ctx.createBuffer(1, len, this.ctx.sampleRate);
     const data = this.noiseBuffer.getChannelData(0);
     for (let i = 0; i < len; i++) data[i] = (Math.random() * 2 - 1) * (1 - i / len);
+
+    // A second, FLAT buffer. The swell shapes its own envelope and needs noise that does not
+    // decay underneath it.
+    const flatLen = Math.floor(this.ctx.sampleRate);
+    this.flatNoise = this.ctx.createBuffer(1, flatLen, this.ctx.sampleRate);
+    const flat = this.flatNoise.getChannelData(0);
+    for (let i = 0; i < flatLen; i++) flat[i] = Math.random() * 2 - 1;
   }
 
   /**
@@ -273,6 +322,47 @@ class AudioManager {
         }
         break;
       }
+      case 'ward': {
+        // Shield pickup: a swell closing in, three bells rising through it, a fifth left
+        // ringing, and a low anchor for body.
+        const g = def.gain * volume;
+        this.#swell(t, 0.55, 0.1 * g, 700, 3200, def.wet);
+        [0, 3, 5].forEach((degree, i) => {
+          this.#ping(t + 0.04 + i * 0.08, pentatonic(degree), 0.15 * g * (1 - i * 0.06), 1.2, 0.005, def.wet);
+        });
+        this.#hold(t + 0.15, pentatonic(5), 0.05 * g, 0.15, 0.55, 1, def.wet);
+        this.#ping(t, pentatonic(-5), 0.055 * g, 0.7, 0.004, def.wet);
+        break;
+      }
+      case 'sever': {
+        // Shield break: the pickup's fifth still ringing, a pop, a crack, then the pickup's
+        // own phrase falling back down. The ring is gated off while the fall is still going.
+        const g = def.gain * volume;
+        this.#hold(t, pentatonic(5), 0.075 * g, 0.01, 0.2, 0.035, def.wet);
+        this.#hold(t, pentatonic(8), 0.05 * g, 0.01, 0.2, 0.035, def.wet);
+        this.#pop(t, 1400, 260, 0.17 * g, 0.025, def.wet);
+        this.#noise(t + 0.004, 0.045, 0.085 * g, 5400, def.wet);
+        [5, 3, 0].forEach((degree, i) => {
+          this.#ping(t + 0.04 + i * 0.075, pentatonic(degree), 0.145 * g * (1 - i * 0.05), 0.6, 0.003, def.wet);
+        });
+        break;
+      }
+      case 'toll': {
+        // Death: a deep inharmonic toll, a breath of air, lights scattering away above it,
+        // and the tonic sagging flat underneath so nothing resolves.
+        const g = def.gain * volume;
+        this.#ping(t, pentatonic(-10), 0.2 * g, 2.4, 0.006, def.wet, TOLL_PARTIALS);
+        this.#noise(t, 0.18, 0.11 * g, 1100, def.wet);
+        for (let i = 0; i < 4; i++) {
+          const frac = i / 3;
+          const at = t + 0.06 + frac * 0.4 * (0.6 + Math.random() * 0.7);
+          const freq = 1500 * Math.pow(700 / 1500, frac) * (0.94 + Math.random() * 0.12);
+          this.#ping(at, freq, 0.055 * g * (1 - frac * 0.55), 0.45 * (1 - frac * 0.3),
+            0.004, def.wet, SCATTER_PARTIALS);
+        }
+        this.#glide(t + 0.02, pentatonic(0), pentatonic(0) * 0.84, 0.09 * g, 0.02, 1.1, def.wet);
+        break;
+      }
       case 'chime': {
         def.notes.forEach((n, i) => {
           const osc = this.ctx.createOscillator();
@@ -355,7 +445,94 @@ class AudioManager {
     osc.stop(at + decay + 0.02);
   }
 
-  #noise(t, dur, gainValue, cutoff) {
+  /** A struck tone: several partials sharing one fast attack, unlike the twinkle's stagger. */
+  #ping(at, freq, amp, decay, attack, wet, partials = PING_PARTIALS) {
+    for (const [mult, partialAmp] of partials) {
+      this.#bell(at, freq * mult, amp * partialAmp, attack, decay, wet);
+    }
+  }
+
+  /** A sustained tone with a real hold, so it can be cut off deliberately. */
+  #hold(at, freq, amp, attack, sustain, release, wet) {
+    const osc = this.ctx.createOscillator();
+    osc.type = 'sine';
+    osc.frequency.value = freq;
+    const gain = this.ctx.createGain();
+    gain.gain.setValueAtTime(0.0001, at);
+    gain.gain.linearRampToValueAtTime(amp, at + attack);
+    gain.gain.setValueAtTime(amp, at + attack + sustain);
+    gain.gain.exponentialRampToValueAtTime(0.0001, at + attack + sustain + release);
+    this.#route(osc, gain, wet);
+    osc.start(at);
+    osc.stop(at + attack + sustain + release + 0.02);
+  }
+
+  /**
+   * A pop. Pitched, not noise: the frequency collapses downward over a couple of dozen
+   * milliseconds, which is what a bubble bursting actually is. The short noise burst on the
+   * front is the lip — without it the pop fades in instead of starting.
+   */
+  #pop(at, from, to, amp, dur, wet) {
+    const osc = this.ctx.createOscillator();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(from, at);
+    osc.frequency.exponentialRampToValueAtTime(Math.max(20, to), at + dur);
+    const gain = this.ctx.createGain();
+    gain.gain.setValueAtTime(amp, at);
+    gain.gain.exponentialRampToValueAtTime(0.0001, at + dur);
+    this.#route(osc, gain, wet);
+    osc.start(at);
+    osc.stop(at + dur + 0.02);
+    this.#noise(at, 0.0025, amp * 0.25, 9000, wet);
+  }
+
+  /** A tone that slides. Downward is the sound of something going wrong. */
+  #glide(at, from, to, amp, attack, decay, wet) {
+    const osc = this.ctx.createOscillator();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(from, at);
+    osc.frequency.exponentialRampToValueAtTime(Math.max(20, to), at + decay);
+    const gain = this.ctx.createGain();
+    gain.gain.setValueAtTime(0.0001, at);
+    gain.gain.linearRampToValueAtTime(amp, at + attack);
+    gain.gain.exponentialRampToValueAtTime(0.0001, at + decay);
+    this.#route(osc, gain, wet);
+    osc.start(at);
+    osc.stop(at + decay + 0.02);
+  }
+
+  /** Band-passed noise whose centre rises while it fades in and out: something forming. */
+  #swell(at, dur, amp, from, to, wet) {
+    const src = this.ctx.createBufferSource();
+    src.buffer = this.flatNoise;
+    const filter = this.ctx.createBiquadFilter();
+    filter.type = 'bandpass';
+    filter.Q.value = 2.2;
+    filter.frequency.setValueAtTime(from, at);
+    filter.frequency.linearRampToValueAtTime(to, at + dur);
+    const gain = this.ctx.createGain();
+    const steps = 48;
+    const curve = new Float32Array(steps);
+    for (let i = 0; i < steps; i++) curve[i] = amp * Math.sin((Math.PI * i) / (steps - 1));
+    gain.gain.setValueCurveAtTime(curve, at, dur);
+    src.connect(filter);
+    this.#route(filter, gain, wet);
+    src.start(at);
+    src.stop(at + dur + 0.02);
+  }
+
+  /** Wire a source through its gain to the dry master and, optionally, the reverb send. */
+  #route(source, gain, wet) {
+    source.connect(gain);
+    gain.connect(this.master);
+    if (wet) {
+      const send = this.ctx.createGain();
+      send.gain.value = wet;
+      gain.connect(send).connect(this.wet);
+    }
+  }
+
+  #noise(t, dur, gainValue, cutoff, wet = 0) {
     const src = this.ctx.createBufferSource();
     src.buffer = this.noiseBuffer;
     const filter = this.ctx.createBiquadFilter();
@@ -364,7 +541,8 @@ class AudioManager {
     const gain = this.ctx.createGain();
     gain.gain.setValueAtTime(gainValue, t);
     gain.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-    src.connect(filter).connect(gain).connect(this.master);
+    src.connect(filter);
+    this.#route(filter, gain, wet);
     src.start(t);
     src.stop(t + dur + 0.02);
   }
