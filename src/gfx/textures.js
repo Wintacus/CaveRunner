@@ -144,8 +144,24 @@ function sourceImage(scene, key) {
  * filter would ship the original crimson to the one device that matters. This runs once per
  * texture at boot on a ~380x360 image, so the cost is irrelevant.
  */
-function stampRecoloured(ctx, img, x, y, boxW, boxH, tone) {
-  if (!img) return false;
+const RECOLOURED = new WeakMap();
+
+/** The recoloured art, built once per image and tone. */
+function recolouredArt(img, tone) {
+  if (!img) return null;
+  const key = `${tone.hue}|${tone.sat}|${tone.light}`;
+  let byTone = RECOLOURED.get(img);
+  if (!byTone) {
+    byTone = new Map();
+    RECOLOURED.set(img, byTone);
+  }
+  if (byTone.has(key)) return byTone.get(key);
+  const made = buildRecoloured(img, tone);
+  byTone.set(key, made);
+  return made;
+}
+
+function buildRecoloured(img, tone) {
   const buf = document.createElement('canvas');
   buf.width = img.width;
   buf.height = img.height;
@@ -180,7 +196,11 @@ function stampRecoloured(ctx, img, x, y, boxW, boxH, tone) {
     px[i + 2] = (bb + m) * 255;
   }
   bctx.putImageData(data, 0, 0);
-  return stampContained(ctx, buf, x, y, boxW, boxH);
+  return buf;
+}
+
+function stampRecoloured(ctx, img, x, y, boxW, boxH, tone) {
+  return stampContained(ctx, recolouredArt(img, tone), x, y, boxW, boxH);
 }
 
 function stampContained(ctx, img, x, y, boxW, boxH) {
@@ -689,18 +709,41 @@ function makeStalagmite(scene) {
   });
 }
 
+/**
+ * The hanging spike. Built from the same painted rock as the stalagmites and the ground
+ * spikes — because it IS the same rock. The art is a cluster with one tall spike up the
+ * middle; this lifts that spike out and flips it, so what hangs from the ceiling is the
+ * identical material and lighting as everything else sharp in the level. Drawing it by hand
+ * made it read flat and plainer than its neighbours no matter how the facets were faked.
+ *
+ * Drawn at 160px tall, which is exactly the length the level authors (len: 5), so the common
+ * case is not stretched. It used to be a 48x32 trapezoid blown up five times, which is why
+ * it hung there as a blunt grey slab with a flat bottom.
+ */
+const STALACTITE_CROP = [138, 6, 114, 304]; // the centre spike within spikes-rose.webp
+
 function makeStalactite(scene) {
-  // Drawn at the length the level actually uses (5 tiles = 160px) so the common case is not
-  // stretched at all. It used to be a 48x32 trapezoid blown up 5x vertically, which is why
-  // it read as a flat grey slab with a flat bottom — hanging in a cave whose ceiling is
-  // already full of painted crystal spikes, it looked like a placeholder because it was one.
   const w = 48;
   const h = 160;
   canvasTexture(scene, KEYS.stalactite, w, h, (ctx) => {
-    glowBlob(ctx, w / 2, h - 12, 30, HAZARD_TONE.glow, 0.75);
+    const art = recolouredArt(sourceImage(scene, ART_FILES.spikes.key), HAZARD_TONE);
+    if (art) {
+      glowBlob(ctx, w / 2, h - 14, 30, HAZARD_TONE.glow, 0.7);
+      const [sx, sy, sw, sh] = STALACTITE_CROP;
+      ctx.save();
+      ctx.translate(0, h);
+      ctx.scale(1, -1);
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = 'high';
+      ctx.drawImage(art, sx, sy, sw, sh, 0, 0, w, h);
+      ctx.restore();
+      // The exact point the player has to clear is the brightest thing on it.
+      glowBlob(ctx, w / 2, h - 6, 12, 0xe6e0ff, 0.8);
+      return;
+    }
 
-    // An actual point, and an asymmetric one. Hazards read as danger by SHAPE first, and a
-    // spike that tapers off-centre looks grown rather than drawn.
+    // No art: a hand-drawn spike, kept so the shape survives a missing asset.
+    glowBlob(ctx, w / 2, h - 12, 30, HAZARD_TONE.glow, 0.75);
     polygon(ctx, [
       [w / 2 - 17, 0],
       [w / 2 + 17, 0],
@@ -715,39 +758,12 @@ function makeStalactite(scene) {
     ctx.strokeStyle = rgba(HAZARD_TONE.glow, 1);
     ctx.lineWidth = 2.6;
     ctx.stroke();
-
-    // A lit facet down one side. Without it the silhouette is a flat cut-out; with it the
-    // thing reads as crystal, which is what everything else in this cave is made of.
-    polygon(ctx, [
-      [w / 2, 0],
-      [w / 2 + 17, 0],
-      [w / 2 + 11, h * 0.34],
-      [w / 2 + 5, h * 0.66],
-      [w / 2 + 1, h]
-    ]);
-    ctx.fillStyle = rgba(HAZARD_TONE.glow, 0.3);
-    ctx.fill();
-
-    // Growth banding where it meets the ceiling, thinning as it tapers.
-    ctx.strokeStyle = rgba(0xffffff, 0.16);
-    ctx.lineWidth = 1;
-    for (const [y, half] of [[15, 15], [33, 13], [54, 11], [78, 8]]) {
-      ctx.beginPath();
-      ctx.moveTo(w / 2 - half, y);
-      ctx.lineTo(w / 2 + half, y);
-      ctx.stroke();
-    }
-
-    // Hot edge down the leading side into the tip.
     ctx.strokeStyle = rgba(0xffffff, 0.6);
     ctx.lineWidth = 1.6;
     ctx.beginPath();
     ctx.moveTo(w / 2 - 10, h * 0.38);
     ctx.lineTo(w / 2 + 1, h - 2);
     ctx.stroke();
-
-    // The last few pixels of the tip glow hot, so the exact point the player has to clear
-    // is the brightest thing on it.
     glowBlob(ctx, w / 2, h - 4, 11, 0xe6e0ff, 0.85);
   });
 }
