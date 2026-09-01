@@ -26,6 +26,18 @@ export class WinScene extends Phaser.Scene {
     this.drift = 0;
     this.cameras.main.fadeIn(320, 5, 7, 13);
 
+    /**
+     * A scrim over the parallax, before anything else is drawn.
+     *
+     * Without it the stats were unreadable, and the reason is worse than "the background is
+     * busy": the values were #3fe0c8 teal on the cave's own bright cyan, near enough the
+     * same HUE and the same luminance, so they did not so much compete with the art as
+     * disappear into it. The labels were #4a6076, a dark slate, which on a bright ground was
+     * fainter still. Same alpha and colour as the pause overlay, so the two read as one
+     * treatment.
+     */
+    this.add.rectangle(0, 0, GAME_WIDTH, GAME_HEIGHT, 0x05070d, 0.66).setOrigin(0, 0);
+
     const cx = GAME_WIDTH / 2;
     const safe = getSafeArea(this.game);
 
@@ -54,16 +66,17 @@ export class WinScene extends Phaser.Scene {
     rows.forEach(([label, value], i) => {
       const y = GAME_HEIGHT * 0.38 + i * 34;
       this.add
-        .text(cx - 150, y, label, { fontFamily: 'sans-serif', fontSize: '18px', color: '#4a6076' })
+        .text(cx - 150, y, label, { fontFamily: 'sans-serif', fontSize: '18px', color: '#a8c4d8' })
         .setOrigin(0, 0.5);
       this.add
         .text(cx + 150, y, value, {
           fontFamily: 'sans-serif',
-          fontSize: '20px',
+          fontSize: '22px',
           fontStyle: 'bold',
-          color: '#3fe0c8'
+          color: '#7dffe4'
         })
-        .setOrigin(1, 0.5);
+        .setOrigin(1, 0.5)
+        .setShadow(0, 2, '#03080c', 5, false, true);
     });
 
     this.add.image(cx - 210, GAME_HEIGHT * 0.42, KEYS.crystal).setScale(1.2);
