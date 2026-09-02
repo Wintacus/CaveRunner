@@ -53,13 +53,24 @@ const page = await browser.newPage();
 // for decoration. The strips are cropped to pure face and drawn below the existing lip.
 const TARGET = {
   '03-overlays-fungus-drips-streaks.png': { s: 1 / 8 },
-  '05-family-sheet-1.png': { h: 112, feather: 6, featherTop: 10 },
-  '06-family-sheet-2.png': { h: 112, feather: 6, featherTop: 10 },
-  // Sheet 07's strips keep their painted stone cap. Drawn starting just under the moss it
-  // becomes a cornice between the moss and the face, which is how the art is drawn; the
-  // earlier strips were trimmed only because their caps were pale enough to read as a
-  // second, mossless lip.
-  '07-family-sheet-3.png': { h: 112, feather: 6 },
+  '05-family-sheet-1.png': { h: 112, feather: 14, featherTop: 34, featherBottom: 20 },
+  '06-family-sheet-2.png': { h: 112, feather: 14, featherTop: 34, featherBottom: 20 },
+  // Sheet 07's painted stone cap is cut off, and this is the important line in this file.
+  //
+  // Measured across all 39 panels at once, the aggregate luminance by row was:
+  //
+  //     rows 1-7   54 -> 93 -> 78     the cap
+  //     row  8     36                 the cliff
+  //     rows 9+    18-25              the face
+  //
+  // A 7px band four times brighter than the rock, in the same place on every panel. Laid
+  // side by side that is a bright stripe running the entire length of the level, with a hard
+  // edge top and bottom. It cannot be scattered away: an earlier attempt to vary each
+  // panel's height and position turned the one line into a dozen, because every panel has a
+  // hard top AND bottom and giving each a different height multiplies the edges instead of
+  // removing them. The only fix is to have no aligned feature at all, so the cap is trimmed
+  // and the new top edge is faded out over 10px into the moss above it.
+  '07-family-sheet-3.png': { h: 112, feather: 6, trim: 0.075, featherTop: 10 },
   // Underhangs. Each piece is roughly 40% platform face and 60% hang, so a target height of
   // 96 puts about 38px over the face and 58px below it, against a bedrock face of 119px and
   // a ledge's 87px. Their side edges come already feathered, so no more is added here.
@@ -269,6 +280,9 @@ const result = await page.evaluate(async (sheets) => {
       // border, so butting two together drew a hard vertical line down the rock every
       // panel-width — a grid, in art that is supposed to be one continuous wall. Placement
       // overlaps neighbours by this same width so the two ramps cross-fade instead.
+      // Fade the TOP edge to transparent. A piece laid over the platform face with a hard
+      // top draws a ruled line across it, and every piece in a run shares that line because
+      // they all sit at the same height. Fading it means there is no edge to align.
       const FT = k.target.featherTop || 0;
       if (FT > 0 && dh > FT) {
         const td = sx2.getImageData(0, 0, dw, dh);
@@ -277,6 +291,17 @@ const result = await page.evaluate(async (sheets) => {
           for (let xx = 0; xx < dw; xx++) td.data[(y * dw + xx) * 4 + 3] *= t;
         }
         sx2.putImageData(td, 0, 0);
+      }
+
+      const FB = k.target.featherBottom || 0;
+      if (FB > 0 && dh > FT + FB) {
+        const bd = sx2.getImageData(0, 0, dw, dh);
+        for (let y = 0; y < FB; y++) {
+          const t = (y + 0.5) / FB;
+          const yy = dh - 1 - y;
+          for (let xx = 0; xx < dw; xx++) bd.data[(yy * dw + xx) * 4 + 3] *= t;
+        }
+        sx2.putImageData(bd, 0, 0);
       }
 
       const F = k.target.feather || 0;

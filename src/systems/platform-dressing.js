@@ -68,22 +68,8 @@ const UNDERHANG_LAYERS = [
   { prefix: 'n', count: 16, depth: 3.2, over: 0.4, step: 1.9 }
 ];
 
-/** How tall each panel's painted stone cap is, so features can be inset under it. */
-const CAP_PX = 14;
-
-/**
- * Every wall panel carries a painted stone cap of roughly the same depth, and they were all
- * placed with their tops at exactly the same y. Individually each cap has an irregular lower
- * edge; forty of them at identical height average that irregularity away into one ruled line
- * running the length of the platform, parallel to the floor.
- *
- * The fix is to stop them lining up. A per-panel vertical scale varies how deep each cap
- * falls, and a small upward nudge varies where each starts. Scaling is the safer of the two
- * knobs — a taller panel covers more, never less — so it does most of the work, and the
- * nudge is capped at 3px so no panel eats meaningfully into the moss lip above it.
- */
-const CAP_SCALE_MAX = 0.35;
-const CAP_NUDGE_MAX = 3;
+/** Feature panels are inset a little so they read as set into the wall, not stuck on it. */
+const FEATURE_INSET_PX = 10;
 
 /**
  * Panels overlap by the width their side edges are feathered over (see the cut script).
@@ -239,11 +225,12 @@ export function dressPlatforms(scene, map, layer, defs = []) {
     const left = run.x * TILE;
     const width = run.w * TILE;
     const lip = run.top * TILE;
-    // The painted face starts just under the MOSS, not under the whole lip tile. The moss
-    // is only the top few pixels of a 32px tile, so starting a tile down left a band of the
-    // old procedural slate showing between the two — the exact grey the art is here to
-    // cover. Each panel's own painted cap then reads as a cornice below the moss.
-    const MOSS_PX = 9;
+    // The painted face starts just under the MOSS, not under the whole lip tile. The moss is
+    // only the top few pixels of a 32px tile, so starting a tile down left a band of the old
+    // procedural slate showing between the two — the exact grey the art is here to cover.
+    // The panels' own tops are faded out over 10px, and starting 5px down puts that fade
+    // across the moss bleed rather than across bare slate, so there is no edge anywhere.
+    const MOSS_PX = 5;
     const faceTop = lip + MOSS_PX;
     const faceH = (run.bottom - run.top + 1) * TILE - MOSS_PX;
     if (faceH <= 0) return;
@@ -255,29 +242,23 @@ export function dressPlatforms(scene, map, layer, defs = []) {
     let x = left;
     while (x < left + width) {
       const frame = `w${wallBag()}`;
-      const f = atlas.get(frame);
-      const w = Math.min(f.width, left + width - x);
-      const sy = 1 + rng.frac() * CAP_SCALE_MAX;
-      const dy = rng.between(0, CAP_NUDGE_MAX);
-      // Crop in texture space, so the height needed is the drawn height divided by the
-      // scale. Clamped to the frame: a panel can be shorter than the face it covers, which
-      // is what the underhangs and the camera's bottom clamp are there for.
-      const cropH = Math.min(f.height, (faceH + dy) / sy);
+      const full = frameW(frame);
+      const w = Math.min(full, left + width - x);
       made.push(
         scene.add
-          .image(x, faceTop - dy, KEYS.wallAtlas, frame)
+          .image(x, faceTop, KEYS.wallAtlas, frame)
           .setOrigin(0, 0)
           .setDepth(DEPTH_FACE)
-          .setScale(1, sy)
-          .setCrop(0, 0, w, cropH)
+          .setCrop(0, 0, w, faceH)
       );
       x += Math.max(8, w - OVERLAP_PX);
     }
 
     // Feature panels inset into the wall on the long runs: light falls, blooms, mushroom
-    // shelves. Drawn below the cornice so they sit inside the rock rather than cutting
-    // across the lip the player reads edges by.
-    if (run.w >= FEATURE_MIN_TILES && faceH > CAP_PX + 8) {
+    // shelves. Inset a little from the top of the face so they read as set into the wall
+    // rather than stuck on it; their own top edges are faded at cut time, so a fixed inset
+    // draws no line.
+    if (run.w >= FEATURE_MIN_TILES && faceH > FEATURE_INSET_PX + 8) {
       const count = Math.max(1, Math.floor(run.w / FEATURE_EVERY_TILES));
       for (let i = 0; i < count; i++) {
         const frame = `p${featureBag()}`;
@@ -285,15 +266,12 @@ export function dressPlatforms(scene, map, layer, defs = []) {
         const span = width - 2 * TILE;
         if (span <= fw) break;
         const at = left + TILE + (span - fw) * ((i + 0.5) / count);
-        // Inset varies too. Pinned at exactly CAP_PX these landed on the cornice line and
-        // reinforced the very edge the scatter above is breaking up.
-        const inset = CAP_PX + rng.between(2, 14);
         made.push(
           scene.add
-            .image(at, faceTop + inset, KEYS.wallAtlas, frame)
+            .image(at, faceTop + FEATURE_INSET_PX, KEYS.wallAtlas, frame)
             .setOrigin(0, 0)
             .setDepth(DEPTH_FACE + 0.5)
-            .setCrop(0, 0, Math.min(fw, left + width - TILE - at), Math.max(8, faceH - inset))
+            .setCrop(0, 0, Math.min(fw, left + width - TILE - at), Math.max(8, faceH - FEATURE_INSET_PX))
         );
       }
     }
@@ -310,9 +288,15 @@ export function dressPlatforms(scene, map, layer, defs = []) {
         if (!atlas.has(frame)) break;
         const f = atlas.get(frame);
         const w = Math.min(f.width, left + width - ux);
+        // Vary how far each piece rides up the face. Every piece in a layer is the same
+        // height, so a fixed fraction puts all their tops at one y — and even a painted
+        // fade accumulates into a soft band when forty of them agree on where to start.
+        // Safe to vary here in a way it was not for the wall panels: these tops are fades,
+        // so moving them makes no new edge.
+        const over = layer.over + rng.frac() * 0.14;
         made.push(
           scene.add
-            .image(ux, bottomY - Math.round(f.height * layer.over), KEYS.wallAtlas, frame)
+            .image(ux, bottomY - Math.round(f.height * over), KEYS.wallAtlas, frame)
             .setOrigin(0, 0)
             .setDepth(layer.depth)
             .setCrop(0, 0, w, f.height)
