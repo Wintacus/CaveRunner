@@ -72,6 +72,20 @@ const UNDERHANG_LAYERS = [
 const CAP_PX = 14;
 
 /**
+ * Every wall panel carries a painted stone cap of roughly the same depth, and they were all
+ * placed with their tops at exactly the same y. Individually each cap has an irregular lower
+ * edge; forty of them at identical height average that irregularity away into one ruled line
+ * running the length of the platform, parallel to the floor.
+ *
+ * The fix is to stop them lining up. A per-panel vertical scale varies how deep each cap
+ * falls, and a small upward nudge varies where each starts. Scaling is the safer of the two
+ * knobs — a taller panel covers more, never less — so it does most of the work, and the
+ * nudge is capped at 3px so no panel eats meaningfully into the moss lip above it.
+ */
+const CAP_SCALE_MAX = 0.35;
+const CAP_NUDGE_MAX = 3;
+
+/**
  * Panels overlap by the width their side edges are feathered over (see the cut script).
  * Butted edge to edge instead, each panel's own dark border drew a hard vertical line down
  * the rock at every join — a grid, in art meant to read as one continuous wall.
@@ -241,14 +255,21 @@ export function dressPlatforms(scene, map, layer, defs = []) {
     let x = left;
     while (x < left + width) {
       const frame = `w${wallBag()}`;
-      const full = frameW(frame);
-      const w = Math.min(full, left + width - x);
+      const f = atlas.get(frame);
+      const w = Math.min(f.width, left + width - x);
+      const sy = 1 + rng.frac() * CAP_SCALE_MAX;
+      const dy = rng.between(0, CAP_NUDGE_MAX);
+      // Crop in texture space, so the height needed is the drawn height divided by the
+      // scale. Clamped to the frame: a panel can be shorter than the face it covers, which
+      // is what the underhangs and the camera's bottom clamp are there for.
+      const cropH = Math.min(f.height, (faceH + dy) / sy);
       made.push(
         scene.add
-          .image(x, faceTop, KEYS.wallAtlas, frame)
+          .image(x, faceTop - dy, KEYS.wallAtlas, frame)
           .setOrigin(0, 0)
           .setDepth(DEPTH_FACE)
-          .setCrop(0, 0, w, faceH)
+          .setScale(1, sy)
+          .setCrop(0, 0, w, cropH)
       );
       x += Math.max(8, w - OVERLAP_PX);
     }
@@ -264,12 +285,15 @@ export function dressPlatforms(scene, map, layer, defs = []) {
         const span = width - 2 * TILE;
         if (span <= fw) break;
         const at = left + TILE + (span - fw) * ((i + 0.5) / count);
+        // Inset varies too. Pinned at exactly CAP_PX these landed on the cornice line and
+        // reinforced the very edge the scatter above is breaking up.
+        const inset = CAP_PX + rng.between(2, 14);
         made.push(
           scene.add
-            .image(at, faceTop + CAP_PX, KEYS.wallAtlas, frame)
+            .image(at, faceTop + inset, KEYS.wallAtlas, frame)
             .setOrigin(0, 0)
             .setDepth(DEPTH_FACE + 0.5)
-            .setCrop(0, 0, Math.min(fw, left + width - TILE - at), faceH - CAP_PX)
+            .setCrop(0, 0, Math.min(fw, left + width - TILE - at), Math.max(8, faceH - inset))
         );
       }
     }

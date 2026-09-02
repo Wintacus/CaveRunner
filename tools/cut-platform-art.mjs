@@ -53,8 +53,8 @@ const page = await browser.newPage();
 // for decoration. The strips are cropped to pure face and drawn below the existing lip.
 const TARGET = {
   '03-overlays-fungus-drips-streaks.png': { s: 1 / 8 },
-  '05-family-sheet-1.png': { h: 112, feather: 6 },
-  '06-family-sheet-2.png': { h: 112, feather: 6 },
+  '05-family-sheet-1.png': { h: 112, feather: 6, featherTop: 10 },
+  '06-family-sheet-2.png': { h: 112, feather: 6, featherTop: 10 },
   // Sheet 07's strips keep their painted stone cap. Drawn starting just under the moss it
   // becomes a cornice between the moss and the face, which is how the art is drawn; the
   // earlier strips were trimmed only because their caps were pale enough to read as a
@@ -269,6 +269,16 @@ const result = await page.evaluate(async (sheets) => {
       // border, so butting two together drew a hard vertical line down the rock every
       // panel-width — a grid, in art that is supposed to be one continuous wall. Placement
       // overlaps neighbours by this same width so the two ramps cross-fade instead.
+      const FT = k.target.featherTop || 0;
+      if (FT > 0 && dh > FT) {
+        const td = sx2.getImageData(0, 0, dw, dh);
+        for (let y = 0; y < FT; y++) {
+          const t = (y + 0.5) / FT;
+          for (let xx = 0; xx < dw; xx++) td.data[(y * dw + xx) * 4 + 3] *= t;
+        }
+        sx2.putImageData(td, 0, 0);
+      }
+
       const F = k.target.feather || 0;
       if (F > 0 && dw > F * 2) {
         const fd = sx2.getImageData(0, 0, dw, dh);
