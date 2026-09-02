@@ -42,8 +42,7 @@ export const KEYS = {
   spikeBig: 'spike_big',
   glow: 'glow',
   spark: 'spark',
-  faceStripA: 'face_strip_a',
-  faceStripB: 'face_strip_b',
+  wallAtlas: 'wall_atlas',
   bgFar: 'bg_far',
   bgMid: 'bg_mid',
   bgNear: 'bg_near'
@@ -110,13 +109,27 @@ export const ART_FILES = {
   bgMid: { key: 'art_bg_mid', path: 'assets/art/background-v2.webp' },
   crystal: { key: 'art_crystal', path: 'assets/art/crystal-amber.webp' },
 
-  // Painted platform kit, cut out of the source sheets by tools/cut-platform-art.mjs:
-  // four face strips, three feature faces, nine growth overlays. Already recoloured to the
-  // cave's blue and baked at display size, so nothing here is resampled at runtime.
+  // Painted platform kit, cut out of the source sheets by tools/cut-platform-art.mjs and
+  // already recoloured to the cave's blue and baked at display size. Counts come from that
+  // script's own output, which prints them on every run.
+  //
+  //   wall    39 face-on wall panels, each with a matching painted stone cap (sheet 07)
+  //   panel    9 wide feature panels — light falls, blooms, mushroom shelves (sheets 05/06)
+  //   growth   9 overlays that stand on or hang off a lip (sheet 03)
   ...Object.fromEntries([
-    ...[0, 1, 2, 3].map((i) => [`face${i}`, { key: `art_face_${i}`, path: `assets/art/platform/face-fills-4-0${i}.webp` }]),
-    ...[0, 1, 2].map((i) => [`hero${i}`, { key: `art_hero_${i}`, path: `assets/art/platform/hero-faces-3-0${i}.webp` }]),
-    ...[0, 1, 2, 3, 4, 5, 6, 7, 8].map((i) => [
+    ...Array.from({ length: 39 }, (_, i) => [
+      `wall${i}`,
+      { key: `art_wall_${i}`, path: `assets/art/platform/family-sheet-3-${String(i).padStart(2, '0')}.webp` }
+    ]),
+    ...Array.from({ length: 4 }, (_, i) => [
+      `panel${i}`,
+      { key: `art_panel_${i}`, path: `assets/art/platform/family-sheet-1-0${i}.webp` }
+    ]),
+    ...Array.from({ length: 5 }, (_, i) => [
+      `panel${4 + i}`,
+      { key: `art_panel_${4 + i}`, path: `assets/art/platform/family-sheet-2-0${i}.webp` }
+    ]),
+    ...Array.from({ length: 9 }, (_, i) => [
       `growth${i}`,
       { key: `art_growth_${i}`, path: `assets/art/platform/overlays-fungus-drips-streaks-0${i}.webp` }
     ])
@@ -1102,35 +1115,59 @@ function makeStrideFrames(scene) {
 }
 
 /**
- * Two wide face strips, each the four painted columns in a different order.
+ * Packs every wall and feature panel into ONE texture with named frames.
  *
- * One TileSprite per platform draws the whole face, which keeps this to ~28 game objects
- * for the entire level rather than one sprite per 58px of ground. The cost of a TileSprite
- * is that it repeats, so the repeat has to be long enough not to read as wallpaper: four
- * distinct columns give a period of ~230px, and two different orderings alternate between
- * platforms so neighbouring runs do not line up.
+ * The wall is built by laying painted panels side by side, and there are 48 of them. Left
+ * as 48 separate textures, two neighbouring panels almost never share one, and every
+ * texture switch flushes Phaser's sprite batch — a wall of 340 panels would cost something
+ * close to 340 draw calls on a phone. Packed into a single atlas the whole wall is one
+ * batch.
+ *
+ * Panels are ~112px tall, so a few rows of 2048 hold all of them well inside the 4096
+ * limit even old mobile GPUs guarantee.
  */
-function makeFaceStrips(scene) {
-  // Variants 0, 2 and 3 only. Variant 1 carries a cluster of painted mushrooms, and any
-  // motif inside a repeating strip becomes a beat you can count: on screen it read as the
-  // same mushrooms every 230px. It is placed as an occasional feature instead, where being
-  // distinctive is the point rather than the problem. What is left is pure rock texture,
-  // where a repeat is far harder to see.
-  const imgs = [0, 2, 3].map((i) => sourceImage(scene, ART_FILES[`face${i}`].key));
-  if (imgs.some((im) => !im)) return;
-  const h = imgs[0].height;
-  const build = (key, order) => {
-    const w = order.reduce((a, i) => a + imgs[i].width, 0);
-    canvasTexture(scene, key, w, h, (ctx) => {
-      let x = 0;
-      for (const i of order) {
-        ctx.drawImage(imgs[i], x, 0);
-        x += imgs[i].width;
+const WALL_COUNT = 39;
+const PANEL_COUNT = 9;
+
+function makeWallAtlas(scene) {
+  const names = [
+    ...Array.from({ length: WALL_COUNT }, (_, i) => [`w${i}`, ART_FILES[`wall${i}`].key]),
+    ...Array.from({ length: PANEL_COUNT }, (_, i) => [`p${i}`, ART_FILES[`panel${i}`].key])
+  ];
+  const imgs = names.map(([frame, key]) => ({ frame, img: sourceImage(scene, key) })).filter((e) => e.img);
+  if (!imgs.length) return;
+
+  const MAX_W = 2048;
+  const PAD = 1; // transparent gutter, so bilinear sampling cannot bleed one panel into the next
+  const rows = [];
+  let row = { items: [], w: 0, h: 0 };
+  for (const e of imgs) {
+    if (row.w + e.img.width + PAD > MAX_W && row.items.length) {
+      rows.push(row);
+      row = { items: [], w: 0, h: 0 };
+    }
+    row.items.push({ ...e, x: row.w });
+    row.w += e.img.width + PAD;
+    row.h = Math.max(row.h, e.img.height);
+  }
+  if (row.items.length) rows.push(row);
+
+  const atlasW = Math.max(...rows.map((r) => r.w));
+  const atlasH = rows.reduce((acc, r) => acc + r.h + PAD, 0);
+  const placed = [];
+  canvasTexture(scene, KEYS.wallAtlas, atlasW, atlasH, (ctx) => {
+    let y = 0;
+    for (const r of rows) {
+      for (const it of r.items) {
+        ctx.drawImage(it.img, it.x, y);
+        placed.push({ frame: it.frame, x: it.x, y, w: it.img.width, h: it.img.height });
       }
-    });
-  };
-  build(KEYS.faceStripA, [0, 2, 1]);
-  build(KEYS.faceStripB, [2, 1, 0]);
+      y += r.h + PAD;
+    }
+  });
+
+  const tex = scene.textures.get(KEYS.wallAtlas);
+  for (const pl of placed) tex.add(pl.frame, 0, pl.x, pl.y, pl.w, pl.h);
 }
 
 /** Build every runtime texture. Called once, from PreloadScene. */
@@ -1140,7 +1177,7 @@ export function generateTextures(scene, viewHeight) {
   makePlayer(scene, KEYS.playerJump, { crouch: true });
   makePlayer(scene, KEYS.playerShield, { rim: COLORS.amber });
   makePlayer(scene, KEYS.playerJumpShield, { crouch: true, rim: COLORS.amber });
-  makeFaceStrips(scene);
+  makeWallAtlas(scene);
   makeShieldRing(scene);
   makeShieldShard(scene);
   makeBat(scene, KEYS.batOpen, true);

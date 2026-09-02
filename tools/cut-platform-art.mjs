@@ -25,7 +25,16 @@ const SRC = process.env.ART_SRC || 'art-incoming';
 const OUT = path.resolve('public/assets/art/platform');
 const listOnly = process.argv.includes('--list');
 
-const SHEETS = ['01-face-fills-4.png', '03-overlays-fungus-drips-streaks.png', '04-hero-faces-3.png'];
+// Sheets 01 and 04 were the first pass at face fills and hero panels. Sheet 07 supersedes
+// both: 39 face-on wall panels, every one with a matching painted stone cap, against 01's
+// four strips and 04's three. 02 is a pair of horizontal top caps the tilemap's own lip
+// already covers.
+const SHEETS = [
+  '03-overlays-fungus-drips-streaks.png',
+  '05-family-sheet-1.png',
+  '06-family-sheet-2.png',
+  '07-family-sheet-3.png'
+];
 
 const browser = await chromium.launch({
   executablePath: process.env.CHROMIUM_PATH || '/opt/pw-browsers/chromium-1194/chrome-linux/chrome'
@@ -40,11 +49,19 @@ const page = await browser.newPage();
 // reads platform edges by — covering it with a second, mossless lip would cost readability
 // for decoration. The strips are cropped to pure face and drawn below the existing lip.
 const TARGET = {
-  '01-face-fills-4.png': { h: 112, trim: 0.1 },
   '03-overlays-fungus-drips-streaks.png': { s: 1 / 8 },
-  '04-hero-faces-3.png': { h: 112, trim: 0.14 }
+  '05-family-sheet-1.png': { h: 112, feather: 6 },
+  '06-family-sheet-2.png': { h: 112, feather: 6 },
+  // Sheet 07's strips keep their painted stone cap. Drawn starting just under the moss it
+  // becomes a cornice between the moss and the face, which is how the art is drawn; the
+  // earlier strips were trimmed only because their caps were pale enough to read as a
+  // second, mossless lip.
+  '07-family-sheet-3.png': { h: 112, feather: 6 }
 };
-const work = SHEETS.map((f) => ({ name: f, b64: fs.readFileSync(path.join(SRC, f)).toString('base64'), target: TARGET[f] }));
+
+/** Foreground dilation radius, per sheet. See the note beside its use. */
+const DILATE = { '07-family-sheet-3.png': 2 };
+const work = SHEETS.map((f) => ({ name: f, b64: fs.readFileSync(path.join(SRC, f)).toString('base64'), target: TARGET[f], dilate: DILATE[f] }));
 
 const result = await page.evaluate(async (sheets) => {
   const out = [];
@@ -84,8 +101,12 @@ const result = await page.evaluate(async (sheets) => {
     // strip shattered into a big piece plus thirty fragments of its brighter details.
     // Dilating the foreground bridges those internal gaps so one strip labels as one
     // component; the crop below still uses the ORIGINAL mask, so nothing is fattened in
-    // the output. Radius 6 is well under the ~64px that separates pieces on these sheets.
-    const R = 6;
+    // the output.
+    //
+    // The radius is per-sheet: it has to be large enough to bridge the dark gaps inside one
+    // piece and smaller than the gap between two. Sheet 07 packs its strips far closer
+    // together than the rest, and 6 fused neighbours into single 179px blobs there.
+    const R = sheet.dilate || 6;
     const dil = new Uint8Array(W * H);
     {
       const tmp = new Uint8Array(W * H);
@@ -214,6 +235,25 @@ const result = await page.evaluate(async (sheets) => {
       const sx2 = sc.getContext('2d');
       sx2.imageSmoothingEnabled = true; sx2.imageSmoothingQuality = 'high';
       sx2.drawImage(cc, 0, 0, dw, dh);
+
+      // Feather the left and right edges to transparent. The wall is built by laying these
+      // side by side, and each was cut as its own tile on the sheet with its own dark
+      // border, so butting two together drew a hard vertical line down the rock every
+      // panel-width — a grid, in art that is supposed to be one continuous wall. Placement
+      // overlaps neighbours by this same width so the two ramps cross-fade instead.
+      const F = k.target.feather || 0;
+      if (F > 0 && dw > F * 2) {
+        const fd = sx2.getImageData(0, 0, dw, dh);
+        for (let y = 0; y < dh; y++) {
+          for (let i = 0; i < F; i++) {
+            const t = (i + 0.5) / F;
+            fd.data[(y * dw + i) * 4 + 3] *= t;
+            fd.data[(y * dw + (dw - 1 - i)) * 4 + 3] *= t;
+          }
+        }
+        sx2.putImageData(fd, 0, 0);
+      }
+
       return { box: k, w: dw, h: dh, url: sc.toDataURL('image/webp', 0.92) };
     });
     out.push({ sheet: sheet.name, W, H, cuts: cuts.map((c) => ({ ...c.box, w: c.w, h: c.h, url: c.url })) });

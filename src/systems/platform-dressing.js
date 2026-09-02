@@ -12,12 +12,16 @@ import { KEYS, ART_FILES } from '../gfx/textures.js';
  *
  * Three rules shape everything below.
  *
- * ONE OBJECT PER RUN, NOT PER TILE. A TileSprite repeats its texture across whatever width
- * it is given, so a 62-tile run costs one game object instead of thirty-four. The price is
- * that it repeats, which is the trap the procedural version fell into: a single 32px tile
- * repeated across a screen holding 26 of them reads as wallpaper. The strips it repeats are
- * therefore four painted columns wide (~230px) and come in two different orderings, so
- * neighbouring runs do not line up.
+ * NO REPEAT AT ALL. The first version tiled one composed strip across each run, which is
+ * cheap but repeats by construction — and a motif inside a repeating texture becomes a beat
+ * the eye counts, which is exactly how it failed: the same painted mushrooms every 230px of
+ * wall. The kit now has 39 distinct face panels, so the wall is simply built out of them
+ * laid side by side, drawn from a shuffled bag so no panel comes round again until all of
+ * them have. Nothing repeats on any screen the player can see at once.
+ *
+ * THE PANELS SHARE ONE TEXTURE. 340-odd panels across the level, each with its own texture,
+ * would flush Phaser's sprite batch on nearly every one. They are packed into a single
+ * atlas in textures.js, so the whole wall draws in one batch.
  *
  * DERIVED FROM THE TILEMAP, NOT THE LEVEL SOURCE. `src/level/level1.js` is authoring input
  * compiled into a .tmj at build time and is deliberately not imported by anything that
@@ -38,17 +42,43 @@ const DEPTH_GROWTH = 2;
 const STANDING = [0, 1, 2, 7, 8];
 const HANGING = [3, 4, 5, 6];
 
-/**
- * Feature faces: the three painted hero panels plus face variant 1, the one with the
- * mushroom cluster in it. That variant is deliberately not in the repeating strip — a motif
- * inside a tiling texture is a beat the eye counts, and this one read as the same mushrooms
- * every 230px of wall. Placed one at a time it does the opposite job.
- */
-const FEATURES = ['hero0', 'hero1', 'hero2', 'face1'];
+const WALL_COUNT = 39;
+const PANEL_COUNT = 9;
 
-/** A run needs to be at least this wide before it earns a feature, and how often after. */
-const FEATURE_MIN_TILES = 8;
-const FEATURE_EVERY_TILES = 13;
+/** How tall each panel's painted stone cap is, so features can be inset under it. */
+const CAP_PX = 14;
+
+/**
+ * Panels overlap by the width their side edges are feathered over (see the cut script).
+ * Butted edge to edge instead, each panel's own dark border drew a hard vertical line down
+ * the rock at every join — a grid, in art meant to read as one continuous wall.
+ */
+const OVERLAP_PX = 6;
+
+/** A run needs to be at least this wide before it earns a feature panel, and how often. */
+const FEATURE_MIN_TILES = 10;
+const FEATURE_EVERY_TILES = 18;
+
+/**
+ * A shuffled bag: every panel comes out once before any comes out twice.
+ *
+ * Picking uniformly at random instead produces visible pairs — the birthday problem makes a
+ * repeat within a few draws far likelier than it feels like it should, and two identical
+ * panels side by side is the one thing this whole approach exists to avoid.
+ */
+function bag(rng, n) {
+  let pool = [];
+  return () => {
+    if (!pool.length) {
+      pool = Array.from({ length: n }, (_, i) => i);
+      for (let i = pool.length - 1; i > 0; i--) {
+        const j = rng.between(0, i);
+        [pool[i], pool[j]] = [pool[j], pool[i]];
+      }
+    }
+    return pool.pop();
+  };
+}
 
 /**
  * Platform runs, read off the ground layer.
@@ -101,48 +131,68 @@ function findRuns(map, layer, ceilingRows = 2) {
  */
 export function dressPlatforms(scene, map, layer) {
   const made = [];
-  if (!scene.textures.exists(KEYS.faceStripA)) return made;
+  if (!scene.textures.exists(KEYS.wallAtlas)) return made;
 
   const rng = new Phaser.Math.RandomDataGenerator(['cave-runner-platform-dressing']);
   const has = (k) => scene.textures.exists(k);
   const growthKey = (i) => ART_FILES[`growth${i}`].key;
-  const featureKey = (i) => ART_FILES[FEATURES[i]].key;
 
   const runs = findRuns(map, layer);
 
-  runs.forEach((run, index) => {
+  const wallBag = bag(rng, WALL_COUNT);
+  const featureBag = bag(rng, PANEL_COUNT);
+  const atlas = scene.textures.get(KEYS.wallAtlas);
+  const frameW = (name) => atlas.get(name).width;
+
+  runs.forEach((run) => {
     const left = run.x * TILE;
     const width = run.w * TILE;
     const lip = run.top * TILE;
     // The painted face starts just under the MOSS, not under the whole lip tile. The moss
     // is only the top few pixels of a 32px tile, so starting a tile down left a band of the
     // old procedural slate showing between the two — the exact grey the art is here to
-    // cover. It then runs to the bottom of the platform: three rows on bedrock, two on a
-    // ledge. The strips are baked taller than either, and a TileSprite crops rather than
-    // squashes, so both get the top of the same painting instead of a stretched copy.
+    // cover. Each panel's own painted cap then reads as a cornice below the moss.
     const MOSS_PX = 9;
     const faceTop = lip + MOSS_PX;
     const faceH = (run.bottom - run.top + 1) * TILE - MOSS_PX;
     if (faceH <= 0) return;
 
-    made.push(
-      scene.add
-        .tileSprite(left, faceTop, width, faceH, index % 2 ? KEYS.faceStripB : KEYS.faceStripA)
-        .setOrigin(0, 0)
-        .setDepth(DEPTH_FACE)
-    );
+    // The wall: panels end to end until the run is covered. The last one is cropped rather
+    // than left to hang over the edge into open air, and every panel is cropped vertically
+    // too — bedrock gets three rows of face and a ledge two, and cropping shows both the
+    // top of the same painting instead of squashing one to fit.
+    let x = left;
+    while (x < left + width) {
+      const frame = `w${wallBag()}`;
+      const full = frameW(frame);
+      const w = Math.min(full, left + width - x);
+      made.push(
+        scene.add
+          .image(x, faceTop, KEYS.wallAtlas, frame)
+          .setOrigin(0, 0)
+          .setDepth(DEPTH_FACE)
+          .setCrop(0, 0, w, faceH)
+      );
+      x += Math.max(8, w - OVERLAP_PX);
+    }
 
-    // Feature faces, spaced out along the run and never within a tile of either end, where
-    // half of one would hang past the platform into open air.
-    if (run.w >= FEATURE_MIN_TILES) {
+    // Feature panels inset into the wall on the long runs: light falls, blooms, mushroom
+    // shelves. Drawn below the cornice so they sit inside the rock rather than cutting
+    // across the lip the player reads edges by.
+    if (run.w >= FEATURE_MIN_TILES && faceH > CAP_PX + 8) {
       const count = Math.max(1, Math.floor(run.w / FEATURE_EVERY_TILES));
       for (let i = 0; i < count; i++) {
-        const key = featureKey(rng.between(0, FEATURES.length - 1));
-        if (!has(key)) continue;
+        const frame = `p${featureBag()}`;
+        const fw = frameW(frame);
         const span = width - 2 * TILE;
-        const at = left + TILE + span * ((i + 0.5) / count) + (rng.frac() - 0.5) * (span / count) * 0.5;
+        if (span <= fw) break;
+        const at = left + TILE + (span - fw) * ((i + 0.5) / count);
         made.push(
-          scene.add.image(at, faceTop, key).setOrigin(0.5, 0).setDepth(DEPTH_FACE).setFlipX(rng.frac() > 0.5)
+          scene.add
+            .image(at, faceTop + CAP_PX, KEYS.wallAtlas, frame)
+            .setOrigin(0, 0)
+            .setDepth(DEPTH_FACE + 0.5)
+            .setCrop(0, 0, Math.min(fw, left + width - TILE - at), faceH - CAP_PX)
         );
       }
     }
