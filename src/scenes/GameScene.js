@@ -54,10 +54,6 @@ export class GameScene extends Phaser.Scene {
     this.ground = map.createLayer('ground', tileset).setDepth(0);
     this.ground.setCollisionByProperty({ collides: true });
 
-    // Painted rock over the tilemap's face, growth along its lips. Purely cosmetic: it
-    // draws above the ground layer and below every entity, and touches no bodies.
-    dressPlatforms(this, map, this.ground);
-
     this.physics.world.setBounds(0, 0, map.widthInPixels, map.heightInPixels);
     this.cameras.main.setBounds(0, 0, map.widthInPixels, map.heightInPixels);
     this.cameras.main.setBackgroundColor(COLORS.void);
@@ -68,6 +64,12 @@ export class GameScene extends Phaser.Scene {
     // Signs are plain world-space text, not pooled entities: there are two of them, they
     // never collide with anything, and they exist for the whole level.
     const defs = parseEntities(objects, TILE);
+
+    // Painted rock over the tilemap's face, growth along its lips. Purely cosmetic: it
+    // draws above the ground layer and below every entity, and touches no bodies. It runs
+    // after the entities are parsed so it can be told where the hazards are and leave room
+    // around them — growth crowding a spike is how the spikes got hard to see.
+    dressPlatforms(this, map, this.ground, defs);
     this.#buildSigns(defs.filter((d) => d.type === 'sign'));
     this.director = new Director(this, defs.filter((d) => d.type !== 'sign'));
 

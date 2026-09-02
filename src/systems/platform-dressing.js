@@ -44,6 +44,14 @@ const HANGING = [3, 4, 5, 6];
 
 const WALL_COUNT = 39;
 const PANEL_COUNT = 9;
+const UNDER_COUNT = 6;
+
+/**
+ * How far the underside frames overlap UP into the face, matching the lip built into them.
+ * Butted to the bottom edge instead, the join is the same ruled line the undersides exist
+ * to get rid of.
+ */
+const UNDER_LIP_PX = 8;
 
 /** How tall each panel's painted stone cap is, so features can be inset under it. */
 const CAP_PX = 14;
@@ -54,6 +62,16 @@ const CAP_PX = 14;
  * the rock at every join — a grid, in art meant to read as one continuous wall.
  */
 const OVERLAP_PX = 6;
+
+/**
+ * Growth keeps this far from any hazard's centre.
+ *
+ * The wall put glowing mushrooms along every lip, including right beside the spikes, and a
+ * hazard has to be the most legible thing on its patch of ground. Brightening the hazard
+ * rim fixes half of that; the other half is not putting decoration next to it in the first
+ * place. 56px is the widest growth overlay's half-width plus the widest hazard's.
+ */
+const HAZARD_CLEAR_PX = 56;
 
 /** A run needs to be at least this wide before it earns a feature panel, and how often. */
 const FEATURE_MIN_TILES = 10;
@@ -129,7 +147,7 @@ function findRuns(map, layer, ceilingRows = 2) {
  * Dress every platform. Returns the created objects so the scene can dispose of them,
  * though in practice they live as long as the scene does.
  */
-export function dressPlatforms(scene, map, layer) {
+export function dressPlatforms(scene, map, layer, defs = []) {
   const made = [];
   if (!scene.textures.exists(KEYS.wallAtlas)) return made;
 
@@ -137,10 +155,16 @@ export function dressPlatforms(scene, map, layer) {
   const has = (k) => scene.textures.exists(k);
   const growthKey = (i) => ART_FILES[`growth${i}`].key;
 
+  // Hazard centres in world pixels, sorted, so the growth walk can skip past them.
+  const HAZARDS = new Set(['stalagmite', 'spike', 'bigspike', 'stalactite']);
+  const hazardXs = defs.filter((d) => HAZARDS.has(d.type)).map((d) => d.x).sort((a, b) => a - b);
+  const nearHazard = (x) => hazardXs.some((hx) => Math.abs(hx - x) < HAZARD_CLEAR_PX);
+
   const runs = findRuns(map, layer);
 
   const wallBag = bag(rng, WALL_COUNT);
   const featureBag = bag(rng, PANEL_COUNT);
+  const underBag = bag(rng, UNDER_COUNT);
   const atlas = scene.textures.get(KEYS.wallAtlas);
   const frameW = (name) => atlas.get(name).width;
 
@@ -197,6 +221,27 @@ export function dressPlatforms(scene, map, layer) {
       }
     }
 
+    // The underside: ragged rock hanging below the bottom edge, so a ledge does not end in
+    // a ruled horizontal line in mid-air. Bedrock runs to the bottom of the map, where the
+    // camera is already clamped, so those go off-screen and cost nothing.
+    const bottomY = (run.bottom + 1) * TILE;
+    let ux = left;
+    while (ux < left + width) {
+      const frame = `u${underBag()}`;
+      if (!atlas.has(frame)) break;
+      const fw = atlas.get(frame).width;
+      const w = Math.min(fw, left + width - ux);
+      made.push(
+        scene.add
+          .image(ux, bottomY - UNDER_LIP_PX, KEYS.wallAtlas, frame)
+          .setOrigin(0, 0)
+          .setDepth(DEPTH_FACE + 0.75)
+          .setCrop(0, 0, w, atlas.get(frame).height)
+          .setFlipX(rng.frac() > 0.5)
+      );
+      ux += Math.max(8, w - OVERLAP_PX);
+    }
+
     // Growth along the lip. Kept a tile clear of both ends: a mushroom cluster centred on
     // the last column of a run hangs half of itself over the pit beyond it.
     if (run.w < 3) return;
@@ -206,7 +251,7 @@ export function dressPlatforms(scene, map, layer) {
       const standing = rng.frac() > 0.42;
       const pool = standing ? STANDING : HANGING;
       const key = growthKey(pool[rng.between(0, pool.length - 1)]);
-      if (has(key)) {
+      if (has(key) && !nearHazard(at)) {
         made.push(
           scene.add
             .image(at, standing ? lip + 2 : lip + TILE - 1, key)

@@ -101,7 +101,17 @@ export const SPRITE_SIZES = {};
  *
  * `hue` is the target in degrees, `sat` and `light` scale what the pixel already had.
  */
-export const HAZARD_TONE = { hue: 252, sat: 0.5, light: 0.88, glow: 0x9d8cff };
+/**
+ * Hazard tone. The recolour leaves near-grey pixels alone, so this only moves the painted
+ * rim: the body stays dark rock and the silhouette still does the work.
+ *
+ * sat and light were 0.5 / 0.88, chosen when the platforms were flat slate and a dark shape
+ * with a thin violet edge stood out against them easily. The painted wall put glowing
+ * mushrooms and veins behind every hazard, and at that setting the spikes got lost in it.
+ * The rim is now hot enough to read against lit rock. Hue stays at 252: violet is already
+ * well clear of the cave's cyan, so this is a luminance problem, not a hue one.
+ */
+export const HAZARD_TONE = { hue: 252, sat: 0.92, light: 1.4, glow: 0xbcaaff };
 
 export const ART_FILES = {
   runner: { key: 'art_runner', path: 'assets/art/runner-v4-gray-hat.webp' },
@@ -1128,6 +1138,77 @@ function makeStrideFrames(scene) {
  */
 const WALL_COUNT = 39;
 const PANEL_COUNT = 9;
+const UNDER_COUNT = 6;
+
+/**
+ * Ragged undersides, so a ledge does not end in a ruled horizontal line hanging in mid-air.
+ *
+ * The rock is not drawn: it is lifted straight off the bottom of the painted wall panels,
+ * which is the half that is hard to fake. Only the SILHOUETTE is procedural, and a silhouette
+ * is the half that is easy — layered sine noise for the general raggedness plus a couple of
+ * deeper drips per frame, so the edge breaks up without turning into a row of teeth.
+ *
+ * Everything below the cut is darkened toward the cave's void: rock hanging under a ledge is
+ * lit from nothing, and leaving it as bright as the lit face made it read as a second wall
+ * rather than an underside.
+ */
+function makeUndersides(scene, imgs) {
+  const H = 46; // a few px of overlap above the ledge bottom, the rest hanging below
+  const LIP = 8; // the overlap, so it blends into the face rather than butting against it
+  const out = [];
+  for (let i = 0; i < UNDER_COUNT; i++) {
+    const src = imgs[(i * 7 + 3) % imgs.length];
+    if (!src) continue;
+    const w = src.width;
+    const c = document.createElement('canvas');
+    c.width = w;
+    c.height = H;
+    const ctx = c.getContext('2d', { willReadFrequently: true });
+    // The bottom slice of a painted panel, flipped so its own top edge is not repeated.
+    ctx.save();
+    ctx.translate(0, H);
+    ctx.scale(1, -1);
+    ctx.drawImage(src, 0, src.height - H, w, H, 0, 0, w, H);
+    ctx.restore();
+
+    const seed = 1000 + i * 137;
+    let rs = seed;
+    const rnd = () => ((rs = (rs * 1664525 + 1013904223) >>> 0) / 0x100000000);
+    const phases = [rnd() * 6.28, rnd() * 6.28, rnd() * 6.28];
+    const drips = [
+      { x: rnd() * w, d: 13 + rnd() * 14, s: 3 + rnd() * 4 },
+      { x: rnd() * w, d: 9 + rnd() * 16, s: 2 + rnd() * 4 },
+      { x: rnd() * w, d: 7 + rnd() * 11, s: 2 + rnd() * 3 }
+    ];
+    const depth = (x) => {
+      let d = 12 + 7 * Math.sin(x / 9 + phases[0]) + 5 * Math.sin(x / 21 + phases[1]) + 2.5 * Math.sin(x / 4 + phases[2]);
+      for (const p of drips) {
+        const t = Math.abs(x - p.x) / p.s;
+        if (t < 3) d += p.d * Math.exp(-t * t);
+      }
+      return Math.max(3, Math.min(H - LIP - 1, d));
+    };
+
+    const im = ctx.getImageData(0, 0, w, H);
+    for (let x = 0; x < w; x++) {
+      const cut = LIP + depth(x);
+      for (let y = 0; y < H; y++) {
+        const idx = (y * w + x) * 4;
+        if (y > cut) im.data[idx + 3] = 0;
+        else if (y > cut - 2) im.data[idx + 3] *= cut - y > 1 ? 0.65 : 0.3;
+        // Unlit rock: fade toward the void the further it hangs below the ledge.
+        const k = Math.max(0, Math.min(1, (y - LIP) / (H - LIP)));
+        const dark = 1 - 0.55 * k;
+        im.data[idx] *= dark;
+        im.data[idx + 1] *= dark;
+        im.data[idx + 2] *= dark;
+      }
+    }
+    ctx.putImageData(im, 0, 0);
+    out.push({ frame: `u${i}`, img: c });
+  }
+  return out;
+}
 
 function makeWallAtlas(scene) {
   const names = [
@@ -1136,6 +1217,7 @@ function makeWallAtlas(scene) {
   ];
   const imgs = names.map(([frame, key]) => ({ frame, img: sourceImage(scene, key) })).filter((e) => e.img);
   if (!imgs.length) return;
+  imgs.push(...makeUndersides(scene, imgs.map((e) => e.img)));
 
   const MAX_W = 2048;
   const PAD = 1; // transparent gutter, so bilinear sampling cannot bleed one panel into the next
