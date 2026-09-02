@@ -42,6 +42,8 @@ export const KEYS = {
   spikeBig: 'spike_big',
   glow: 'glow',
   spark: 'spark',
+  faceStripA: 'face_strip_a',
+  faceStripB: 'face_strip_b',
   bgFar: 'bg_far',
   bgMid: 'bg_mid',
   bgNear: 'bg_near'
@@ -106,7 +108,19 @@ export const ART_FILES = {
   runner: { key: 'art_runner', path: 'assets/art/runner-v4-gray-hat.webp' },
   spikes: { key: 'art_spikes', path: 'assets/art/spikes-rose.webp' },
   bgMid: { key: 'art_bg_mid', path: 'assets/art/background-v2.webp' },
-  crystal: { key: 'art_crystal', path: 'assets/art/crystal-amber.webp' }
+  crystal: { key: 'art_crystal', path: 'assets/art/crystal-amber.webp' },
+
+  // Painted platform kit, cut out of the source sheets by tools/cut-platform-art.mjs:
+  // four face strips, three feature faces, nine growth overlays. Already recoloured to the
+  // cave's blue and baked at display size, so nothing here is resampled at runtime.
+  ...Object.fromEntries([
+    ...[0, 1, 2, 3].map((i) => [`face${i}`, { key: `art_face_${i}`, path: `assets/art/platform/face-fills-4-0${i}.webp` }]),
+    ...[0, 1, 2].map((i) => [`hero${i}`, { key: `art_hero_${i}`, path: `assets/art/platform/hero-faces-3-0${i}.webp` }]),
+    ...[0, 1, 2, 3, 4, 5, 6, 7, 8].map((i) => [
+      `growth${i}`,
+      { key: `art_growth_${i}`, path: `assets/art/platform/overlays-fungus-drips-streaks-0${i}.webp` }
+    ])
+  ])
 };
 
 
@@ -1087,6 +1101,38 @@ function makeStrideFrames(scene) {
   }
 }
 
+/**
+ * Two wide face strips, each the four painted columns in a different order.
+ *
+ * One TileSprite per platform draws the whole face, which keeps this to ~28 game objects
+ * for the entire level rather than one sprite per 58px of ground. The cost of a TileSprite
+ * is that it repeats, so the repeat has to be long enough not to read as wallpaper: four
+ * distinct columns give a period of ~230px, and two different orderings alternate between
+ * platforms so neighbouring runs do not line up.
+ */
+function makeFaceStrips(scene) {
+  // Variants 0, 2 and 3 only. Variant 1 carries a cluster of painted mushrooms, and any
+  // motif inside a repeating strip becomes a beat you can count: on screen it read as the
+  // same mushrooms every 230px. It is placed as an occasional feature instead, where being
+  // distinctive is the point rather than the problem. What is left is pure rock texture,
+  // where a repeat is far harder to see.
+  const imgs = [0, 2, 3].map((i) => sourceImage(scene, ART_FILES[`face${i}`].key));
+  if (imgs.some((im) => !im)) return;
+  const h = imgs[0].height;
+  const build = (key, order) => {
+    const w = order.reduce((a, i) => a + imgs[i].width, 0);
+    canvasTexture(scene, key, w, h, (ctx) => {
+      let x = 0;
+      for (const i of order) {
+        ctx.drawImage(imgs[i], x, 0);
+        x += imgs[i].width;
+      }
+    });
+  };
+  build(KEYS.faceStripA, [0, 2, 1]);
+  build(KEYS.faceStripB, [2, 1, 0]);
+}
+
 /** Build every runtime texture. Called once, from PreloadScene. */
 export function generateTextures(scene, viewHeight) {
   makePlayer(scene, KEYS.player);
@@ -1094,6 +1140,7 @@ export function generateTextures(scene, viewHeight) {
   makePlayer(scene, KEYS.playerJump, { crouch: true });
   makePlayer(scene, KEYS.playerShield, { rim: COLORS.amber });
   makePlayer(scene, KEYS.playerJumpShield, { crouch: true, rim: COLORS.amber });
+  makeFaceStrips(scene);
   makeShieldRing(scene);
   makeShieldShard(scene);
   makeBat(scene, KEYS.batOpen, true);

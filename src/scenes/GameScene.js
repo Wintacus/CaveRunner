@@ -15,6 +15,7 @@ import { KEYS } from '../gfx/textures.js';
 import { Player } from '../objects/player.js';
 import { Director, parseEntities, findSpawn } from '../systems/director.js';
 import { Parallax } from '../systems/parallax.js';
+import { dressPlatforms } from '../systems/platform-dressing.js';
 import { audio } from '../systems/audio.js';
 import { music } from '../systems/music.js';
 import { haptics } from '../systems/haptics.js';
@@ -52,6 +53,10 @@ export class GameScene extends Phaser.Scene {
     map.createLayer('decor', tileset).setDepth(-20).setAlpha(0.85);
     this.ground = map.createLayer('ground', tileset).setDepth(0);
     this.ground.setCollisionByProperty({ collides: true });
+
+    // Painted rock over the tilemap's face, growth along its lips. Purely cosmetic: it
+    // draws above the ground layer and below every entity, and touches no bodies.
+    dressPlatforms(this, map, this.ground);
 
     this.physics.world.setBounds(0, 0, map.widthInPixels, map.heightInPixels);
     this.cameras.main.setBounds(0, 0, map.widthInPixels, map.heightInPixels);
