@@ -44,14 +44,29 @@ const HANGING = [3, 4, 5, 6];
 
 const WALL_COUNT = 39;
 const PANEL_COUNT = 9;
-const UNDER_COUNT = 6;
 
 /**
- * How far the underside frames overlap UP into the face, matching the lip built into them.
- * Butted to the bottom edge instead, the join is the same ruled line the undersides exist
- * to get rid of.
+ * The underhangs: three painted layers, ALL drawn in front of the platform, stacked to bury
+ * its bottom edge under rock.
+ *
+ * Every piece is roughly 40% platform face and 60% hang, and each has a ragged top that
+ * fades out, so laid over the face it dissolves into it rather than ending anywhere. That
+ * fade is the whole mechanism. The procedural version this replaces had a hard horizontal
+ * cut with a tonal step at it, which just moved the straight line up the wall.
+ *
+ *   far   broad masses, softest, does the covering
+ *   mid   knobs and broken shelves, breaks the silhouette
+ *   near  spurs and hanging points, darkest, sells the depth
+ *
+ * `step` is the fraction of a piece's width to advance by, so neighbours overlap and their
+ * feathered sides cross-fade. `every` on the near layer is a pixel spacing instead: those
+ * are accents, and a solid row of them would read as a fringe.
  */
-const UNDER_LIP_PX = 8;
+const UNDERHANG_LAYERS = [
+  { prefix: 'f', count: 12, depth: 3.0, over: 0.4, step: 0.72 },
+  { prefix: 'm', count: 12, depth: 3.1, over: 0.4, step: 0.66 },
+  { prefix: 'n', count: 16, depth: 3.2, over: 0.4, step: 1.9 }
+];
 
 /** How tall each panel's painted stone cap is, so features can be inset under it. */
 const CAP_PX = 14;
@@ -144,8 +159,46 @@ function findRuns(map, layer, ceilingRows = 2) {
 }
 
 /**
- * Dress every platform. Returns the created objects so the scene can dispose of them,
- * though in practice they live as long as the scene does.
+ * Hide everything off screen, and keep doing it as the camera moves.
+ *
+ * Three layers of underhang over every platform put the dressing past 1500 display objects,
+ * and Phaser walks its whole display list every frame whether an object is on screen or not.
+ * An invisible one bails out immediately, so this turns most of that walk into a flag check.
+ *
+ * The objects are sorted by x once and tracked with two pointers, so a frame only touches
+ * the handful entering or leaving the view rather than rescanning. Widths vary but none
+ * exceeds ~250px, hence the 320px slack on the left edge: an object whose x has passed out
+ * of view may still be drawing into it.
+ */
+function makeCuller(objects) {
+  const items = objects
+    .map((o) => ({ o, x: o.x }))
+    .sort((a, b) => a.x - b.x);
+  for (const it of items) it.o.visible = false;
+
+  const SLACK = 320;
+  let lo = 0;
+  let hi = 0;
+
+  return (left, right) => {
+    while (hi < items.length && items[hi].x < right) items[hi++].o.visible = true;
+    while (hi > 0 && items[hi - 1].x >= right) items[--hi].o.visible = false;
+    while (lo < items.length && items[lo].x + SLACK < left) items[lo++].o.visible = false;
+    // Only un-hide what is also inside the right edge. Without the `lo < hi` guard a jump
+    // backwards — a respawn, or the camera being moved for a screenshot — walks this pointer
+    // back over the whole level marking everything visible, because it has no idea the right
+    // pointer already retreated past it.
+    while (lo > 0 && items[lo - 1].x + SLACK >= left) {
+      lo--;
+      if (lo < hi) items[lo].o.visible = true;
+    }
+    if (lo > hi) lo = hi;
+  };
+}
+
+/**
+ * Dress every platform. Returns a cull function the scene calls each frame with the camera's
+ * horizontal extent; the objects themselves live as long as the scene does.
  */
 export function dressPlatforms(scene, map, layer, defs = []) {
   const made = [];
@@ -164,7 +217,7 @@ export function dressPlatforms(scene, map, layer, defs = []) {
 
   const wallBag = bag(rng, WALL_COUNT);
   const featureBag = bag(rng, PANEL_COUNT);
-  const underBag = bag(rng, UNDER_COUNT);
+  const underBags = UNDERHANG_LAYERS.map((l) => bag(rng, l.count));
   const atlas = scene.textures.get(KEYS.wallAtlas);
   const frameW = (name) => atlas.get(name).width;
 
@@ -221,26 +274,32 @@ export function dressPlatforms(scene, map, layer, defs = []) {
       }
     }
 
-    // The underside: ragged rock hanging below the bottom edge, so a ledge does not end in
-    // a ruled horizontal line in mid-air. Bedrock runs to the bottom of the map, where the
-    // camera is already clamped, so those go off-screen and cost nothing.
+    // The underhangs. Three passes along the bottom edge, back to front, each piece hung
+    // so its painted face-overlap lands on the platform and the rest falls below. Bedrock
+    // runs to the bottom of the map where the camera is already clamped, so those fall
+    // outside the view and cost nothing.
     const bottomY = (run.bottom + 1) * TILE;
-    let ux = left;
-    while (ux < left + width) {
-      const frame = `u${underBag()}`;
-      if (!atlas.has(frame)) break;
-      const fw = atlas.get(frame).width;
-      const w = Math.min(fw, left + width - ux);
-      made.push(
-        scene.add
-          .image(ux, bottomY - UNDER_LIP_PX, KEYS.wallAtlas, frame)
-          .setOrigin(0, 0)
-          .setDepth(DEPTH_FACE + 0.75)
-          .setCrop(0, 0, w, atlas.get(frame).height)
-          .setFlipX(rng.frac() > 0.5)
-      );
-      ux += Math.max(8, w - OVERLAP_PX);
-    }
+    UNDERHANG_LAYERS.forEach((layer, li) => {
+      let ux = left;
+      while (ux < left + width) {
+        const frame = `${layer.prefix}${underBags[li]()}`;
+        if (!atlas.has(frame)) break;
+        const f = atlas.get(frame);
+        const w = Math.min(f.width, left + width - ux);
+        made.push(
+          scene.add
+            .image(ux, bottomY - Math.round(f.height * layer.over), KEYS.wallAtlas, frame)
+            .setOrigin(0, 0)
+            .setDepth(layer.depth)
+            .setCrop(0, 0, w, f.height)
+            // Flip only when the piece is whole. Crop is in texture space, so a flipped and
+            // cropped sprite keeps the mirrored half of the crop and lands somewhere other
+            // than where it was placed. Only the last piece of a run is ever cropped.
+            .setFlipX(w === f.width && rng.frac() > 0.5)
+        );
+        ux += Math.max(12, f.width * layer.step);
+      }
+    });
 
     // Growth along the lip. Kept a tile clear of both ends: a mushroom cluster centred on
     // the last column of a run hangs half of itself over the pit beyond it.
@@ -264,5 +323,5 @@ export function dressPlatforms(scene, map, layer, defs = []) {
     }
   });
 
-  return made;
+  return makeCuller(made);
 }

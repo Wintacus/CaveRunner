@@ -69,7 +69,7 @@ export class GameScene extends Phaser.Scene {
     // draws above the ground layer and below every entity, and touches no bodies. It runs
     // after the entities are parsed so it can be told where the hazards are and leave room
     // around them — growth crowding a spike is how the spikes got hard to see.
-    dressPlatforms(this, map, this.ground, defs);
+    this.cullDressing = dressPlatforms(this, map, this.ground, defs);
     this.#buildSigns(defs.filter((d) => d.type === 'sign'));
     this.director = new Director(this, defs.filter((d) => d.type !== 'sign'));
 
@@ -234,6 +234,13 @@ export class GameScene extends Phaser.Scene {
     // Delta-time everything, capped: a 120Hz phone, a 60Hz phone and a phone resuming
     // from the background must all produce the same run.
     const dt = Math.min(delta, MAX_DELTA_MS);
+
+    // Platform dressing is static, so it only needs its visibility rechecked as the camera
+    // moves. Two pointers over an x-sorted list: a frame touches only what enters or leaves.
+    if (this.cullDressing) {
+      const v = this.cameras.main.worldView;
+      this.cullDressing(v.x, v.right);
+    }
 
     this.#releaseIfDeviceLetGo();
 

@@ -31,6 +31,9 @@ const listOnly = process.argv.includes('--list');
 // already covers.
 const SHEETS = [
   '03-overlays-fungus-drips-streaks.png',
+  '09-underhang-far.png',
+  '10-underhang-mid.png',
+  '11-underhang-near.png',
   '05-family-sheet-1.png',
   '06-family-sheet-2.png',
   '07-family-sheet-3.png'
@@ -56,11 +59,17 @@ const TARGET = {
   // becomes a cornice between the moss and the face, which is how the art is drawn; the
   // earlier strips were trimmed only because their caps were pale enough to read as a
   // second, mossless lip.
-  '07-family-sheet-3.png': { h: 112, feather: 6 }
+  '07-family-sheet-3.png': { h: 112, feather: 6 },
+  // Underhangs. Each piece is roughly 40% platform face and 60% hang, so a target height of
+  // 96 puts about 38px over the face and 58px below it, against a bedrock face of 119px and
+  // a ledge's 87px. Their side edges come already feathered, so no more is added here.
+  '09-underhang-far.png': { h: 96 },
+  '10-underhang-mid.png': { h: 96 },
+  '11-underhang-near.png': { h: 104 }
 };
 
 /** Foreground dilation radius, per sheet. See the note beside its use. */
-const DILATE = { '07-family-sheet-3.png': 2 };
+const DILATE = { '07-family-sheet-3.png': 2, '11-underhang-near.png': 2 };
 const work = SHEETS.map((f) => ({ name: f, b64: fs.readFileSync(path.join(SRC, f)).toString('base64'), target: TARGET[f], dilate: DILATE[f] }));
 
 const result = await page.evaluate(async (sheets) => {
@@ -77,10 +86,27 @@ const result = await page.evaluate(async (sheets) => {
     const d = ctx.getImageData(0, 0, W, H);
     const px = d.data;
 
-    // --- background: flood fill from every border pixel over near-black ----------
+    // --- background --------------------------------------------------------------
+    // Sheets arrive one of two ways. The early ones were RGB on pure black, where the
+    // background has to be derived. The underhang sheets carry real alpha, and there the
+    // alpha IS the answer and must be used verbatim: those pieces fade out along their top
+    // edges on purpose, and re-deriving a mask would flatten exactly the soft edge that
+    // makes them work.
+    let preKeyed = false;
+    for (let i = 3; i < px.length; i += 4) {
+      if (px[i] > 4 && px[i] < 250) { preKeyed = true; break; }
+    }
+
+    const bg = new Uint8Array(W * H);
+    if (preKeyed) {
+      for (let p = 0; p < W * H; p++) bg[p] = px[p * 4 + 3] < 8 ? 1 : 0;
+    } else {
+      floodFillBackground();
+    }
+
+    function floodFillBackground() {
     const BG = 8; // max channel value still considered background
     const isDark = (i) => px[i] <= BG && px[i + 1] <= BG && px[i + 2] <= BG;
-    const bg = new Uint8Array(W * H);
     const stack = [];
     for (let x = 0; x < W; x++) { stack.push(x, x + (H - 1) * W); }
     for (let y = 0; y < H; y++) { stack.push(y * W, W - 1 + y * W); }
@@ -94,6 +120,7 @@ const result = await page.evaluate(async (sheets) => {
       if (x < W - 1) stack.push(p + 1);
       if (y > 0) stack.push(p - W);
       if (y < H - 1) stack.push(p + W);
+    }
     }
 
     // --- close the foreground before labelling ------------------------------------
@@ -176,7 +203,8 @@ const result = await page.evaluate(async (sheets) => {
           outImg.data[di + 2] = px[si + 2];
           // Background pixels go transparent. Foreground keeps full alpha, except the
           // darkest fringe, which is faded so the cut edge is not a hard line.
-          if (bg[sp]) outImg.data[di + 3] = 0;
+          if (preKeyed) outImg.data[di + 3] = px[si + 3];
+          else if (bg[sp]) outImg.data[di + 3] = 0;
           else {
             const v = Math.max(px[si], px[si + 1], px[si + 2]);
             outImg.data[di + 3] = v < 26 ? Math.round((v / 26) * 255) : 255;

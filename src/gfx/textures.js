@@ -126,6 +126,7 @@ export const ART_FILES = {
   //   wall    39 face-on wall panels, each with a matching painted stone cap (sheet 07)
   //   panel    9 wide feature panels — light falls, blooms, mushroom shelves (sheets 05/06)
   //   growth   9 overlays that stand on or hang off a lip (sheet 03)
+  //   far/mid/near  12/12/16 underhang pieces at three depths (sheets 09/10/11)
   ...Object.fromEntries([
     ...Array.from({ length: 39 }, (_, i) => [
       `wall${i}`,
@@ -142,7 +143,14 @@ export const ART_FILES = {
     ...Array.from({ length: 9 }, (_, i) => [
       `growth${i}`,
       { key: `art_growth_${i}`, path: `assets/art/platform/overlays-fungus-drips-streaks-0${i}.webp` }
-    ])
+    ]),
+    // Underhangs, three depths, all drawn IN FRONT of the platform. See platform-dressing.js.
+    ...[['far', 12], ['mid', 12], ['near', 16]].flatMap(([name, n]) =>
+      Array.from({ length: n }, (_, i) => [
+        `${name}${i}`,
+        { key: `art_${name}_${i}`, path: `assets/art/platform/underhang-${name}-${String(i).padStart(2, '0')}.webp` }
+      ])
+    )
   ])
 };
 
@@ -1134,90 +1142,25 @@ function makeStrideFrames(scene) {
  * batch.
  *
  * Panels are ~112px tall, so a few rows of 2048 hold all of them well inside the 4096
- * limit even old mobile GPUs guarantee.
+ * limit even old mobile GPUs guarantee. The underhang pieces ride in the same atlas for the
+ * same reason: three layers of them across every platform is a lot of quads to draw, and
+ * they are worth nothing if each one costs a batch flush.
  */
 const WALL_COUNT = 39;
 const PANEL_COUNT = 9;
-const UNDER_COUNT = 6;
-
-/**
- * Ragged undersides, so a ledge does not end in a ruled horizontal line hanging in mid-air.
- *
- * The rock is not drawn: it is lifted straight off the bottom of the painted wall panels,
- * which is the half that is hard to fake. Only the SILHOUETTE is procedural, and a silhouette
- * is the half that is easy — layered sine noise for the general raggedness plus a couple of
- * deeper drips per frame, so the edge breaks up without turning into a row of teeth.
- *
- * Everything below the cut is darkened toward the cave's void: rock hanging under a ledge is
- * lit from nothing, and leaving it as bright as the lit face made it read as a second wall
- * rather than an underside.
- */
-function makeUndersides(scene, imgs) {
-  const H = 46; // a few px of overlap above the ledge bottom, the rest hanging below
-  const LIP = 8; // the overlap, so it blends into the face rather than butting against it
-  const out = [];
-  for (let i = 0; i < UNDER_COUNT; i++) {
-    const src = imgs[(i * 7 + 3) % imgs.length];
-    if (!src) continue;
-    const w = src.width;
-    const c = document.createElement('canvas');
-    c.width = w;
-    c.height = H;
-    const ctx = c.getContext('2d', { willReadFrequently: true });
-    // The bottom slice of a painted panel, flipped so its own top edge is not repeated.
-    ctx.save();
-    ctx.translate(0, H);
-    ctx.scale(1, -1);
-    ctx.drawImage(src, 0, src.height - H, w, H, 0, 0, w, H);
-    ctx.restore();
-
-    const seed = 1000 + i * 137;
-    let rs = seed;
-    const rnd = () => ((rs = (rs * 1664525 + 1013904223) >>> 0) / 0x100000000);
-    const phases = [rnd() * 6.28, rnd() * 6.28, rnd() * 6.28];
-    const drips = [
-      { x: rnd() * w, d: 13 + rnd() * 14, s: 3 + rnd() * 4 },
-      { x: rnd() * w, d: 9 + rnd() * 16, s: 2 + rnd() * 4 },
-      { x: rnd() * w, d: 7 + rnd() * 11, s: 2 + rnd() * 3 }
-    ];
-    const depth = (x) => {
-      let d = 12 + 7 * Math.sin(x / 9 + phases[0]) + 5 * Math.sin(x / 21 + phases[1]) + 2.5 * Math.sin(x / 4 + phases[2]);
-      for (const p of drips) {
-        const t = Math.abs(x - p.x) / p.s;
-        if (t < 3) d += p.d * Math.exp(-t * t);
-      }
-      return Math.max(3, Math.min(H - LIP - 1, d));
-    };
-
-    const im = ctx.getImageData(0, 0, w, H);
-    for (let x = 0; x < w; x++) {
-      const cut = LIP + depth(x);
-      for (let y = 0; y < H; y++) {
-        const idx = (y * w + x) * 4;
-        if (y > cut) im.data[idx + 3] = 0;
-        else if (y > cut - 2) im.data[idx + 3] *= cut - y > 1 ? 0.65 : 0.3;
-        // Unlit rock: fade toward the void the further it hangs below the ledge.
-        const k = Math.max(0, Math.min(1, (y - LIP) / (H - LIP)));
-        const dark = 1 - 0.55 * k;
-        im.data[idx] *= dark;
-        im.data[idx + 1] *= dark;
-        im.data[idx + 2] *= dark;
-      }
-    }
-    ctx.putImageData(im, 0, 0);
-    out.push({ frame: `u${i}`, img: c });
-  }
-  return out;
-}
-
+const FAR_COUNT = 12;
+const MID_COUNT = 12;
+const NEAR_COUNT = 16;
 function makeWallAtlas(scene) {
   const names = [
     ...Array.from({ length: WALL_COUNT }, (_, i) => [`w${i}`, ART_FILES[`wall${i}`].key]),
-    ...Array.from({ length: PANEL_COUNT }, (_, i) => [`p${i}`, ART_FILES[`panel${i}`].key])
+    ...Array.from({ length: PANEL_COUNT }, (_, i) => [`p${i}`, ART_FILES[`panel${i}`].key]),
+    ...Array.from({ length: FAR_COUNT }, (_, i) => [`f${i}`, ART_FILES[`far${i}`].key]),
+    ...Array.from({ length: MID_COUNT }, (_, i) => [`m${i}`, ART_FILES[`mid${i}`].key]),
+    ...Array.from({ length: NEAR_COUNT }, (_, i) => [`n${i}`, ART_FILES[`near${i}`].key])
   ];
   const imgs = names.map(([frame, key]) => ({ frame, img: sourceImage(scene, key) })).filter((e) => e.img);
   if (!imgs.length) return;
-  imgs.push(...makeUndersides(scene, imgs.map((e) => e.img)));
 
   const MAX_W = 2048;
   const PAD = 1; // transparent gutter, so bilinear sampling cannot bleed one panel into the next
