@@ -219,9 +219,12 @@ function stampContained(ctx, img, x, y, boxW, boxH) {
  * Stamp the runner with a squash, lean or lift baked into the canvas rather than applied to
  * the sprite, so the Arcade hitbox never moves with the pose.
  */
-function stampRunnerArt(ctx, img, w, h, { squashX = 1, squashY = 1, tilt = 0, lift = 0 } = {}) {
-  const boxX = 2;
-  const boxY = 2 - lift;
+function stampRunnerArt(ctx, img, w, h, { squashX = 1, squashY = 1, tilt = 0, lift = 0, pad = 8 } = {}) {
+  // The art box is fixed at w+12 by h+12; `pad` is the transparent margin the canvas gives
+  // it. Both offsets are pad-6 so the margin stays symmetric — the Arcade body is centred
+  // on the canvas, so any asymmetry here would slide the hitbox off the figure.
+  const boxX = pad - 6;
+  const boxY = pad - 6 - lift;
   const boxW = w + 12;
   const boxH = h + 12;
   ctx.save();
@@ -347,31 +350,48 @@ function polygon(ctx, points) {
  * `squash` is a {x, y} scale pair baked into the frame — the ground stride's stretch and
  * compress, the same shape the jump tween makes, an order of magnitude smaller.
  */
+/**
+ * `PLAYER_PAD` is transparent margin around the 30x42 figure, and it exists to hold the
+ * glow. The glow used to be radius 22 at 0.28, which fitted in an 8px margin with nothing
+ * to spare; a stronger halo at radius 27 ran off the edge of the texture and left a 6.7%
+ * alpha rectangle where the gradient was clipped — a faint hard-edged box that travels with
+ * the sprite. 12px of margin lets the gradient reach zero on its own.
+ */
+const PLAYER_PAD = 12;
+const PLAYER_GLOW_R = 27;
+
 function makePlayer(scene, key, { crouch = false, squash = null, rim = COLORS.teal } = {}) {
   const [w, h] = [30, 42];
-  canvasTexture(scene, key, w + 16, h + 16, (ctx) => {
-    const ox = 8;
-    const oy = 8;
+  canvasTexture(scene, key, w + PLAYER_PAD * 2, h + PLAYER_PAD * 2, (ctx) => {
+    const ox = PLAYER_PAD;
+    const oy = PLAYER_PAD;
     const art = sourceImage(scene, ART_FILES.runner.key);
     if (art) {
       // Stamp to a scratch canvas first: the outline is traced from the stamped result, so
       // it has to follow whatever squash and lift this frame applied.
-      const cw = w + 16;
-      const ch = h + 16;
+      const cw = w + PLAYER_PAD * 2;
+      const ch = h + PLAYER_PAD * 2;
       const scratch = document.createElement('canvas');
       scratch.width = cw;
       scratch.height = ch;
       const sc = scratch.getContext('2d');
-      if (crouch) stampRunnerArt(sc, art, w, h, { squashX: 1.06, squashY: 0.88, tilt: 0.08 });
-      else stampRunnerArt(sc, art, w, h, squash ? { squashX: squash.x, squashY: squash.y } : {});
+      const pad = PLAYER_PAD;
+      if (crouch) stampRunnerArt(sc, art, w, h, { squashX: 1.06, squashY: 0.88, tilt: 0.08, pad });
+      else stampRunnerArt(sc, art, w, h, squash ? { squashX: squash.x, squashY: squash.y, pad } : { pad });
 
       rimOutline(ctx, scratch, cw, ch, rim);
       ctx.drawImage(scratch, 0, 0);
       // Destination-over so the gray hat cannot be multiplied into the rim glow.
-      glowBehind(ctx, ox + w / 2, oy + h / 2, 22, rim, rim === COLORS.amber ? 0.55 : 0.28);
+      //
+      // 0.62 against the old 0.28: the rim itself is unchanged, and the halo is what does
+      // the separating. Teal-on-cyan is a hue collision the rim alone kept losing — this is
+      // the same background problem that hid the score, the checkpoint toast and the goal.
+      // The shielded amber stays clearly the brighter of the two, or picking up a shield
+      // would read as the character dimming.
+      glowBehind(ctx, ox + w / 2, oy + h / 2, PLAYER_GLOW_R, rim, rim === COLORS.amber ? 0.8 : 0.62);
       return;
     }
-    glowBlob(ctx, ox + w / 2, oy + h / 2, 22, rim, 0.5);
+    glowBlob(ctx, ox + w / 2, oy + h / 2, PLAYER_GLOW_R, rim, 0.62);
 
     // Body
     const bodyH = crouch ? h - 6 : h;
