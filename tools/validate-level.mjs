@@ -11,7 +11,9 @@ import {
   GAME_WIDTH,
   ACTIVATION_MARGIN,
   SPIDER_WINDUP,
-  SPIDER_DROP
+  SPIDER_DROP,
+  JUMP_BUFFER_MS,
+  HOLD_MAX_MS
 } from '../src/config/tuning.js';
 
 const errors = [];
@@ -95,18 +97,19 @@ const isSolid = (x, y) => {
  * stalagmite's 40px body sits 26px down a 68px sprite drawn from its base, so it stands
  * ~42px proud; a small spike stands ~15px; a big spike 66px.
  */
-const BIGSPIKE_BODY_W = 60;
-const HAZARD_RISE = { stalagmite: 42, spikes: 15, bigspikes: 66 };
+const BIGSPIKE_BODY_W = 42;
+const BIGSPIKE_ART_W = 72;
+const HAZARD_RISE = { stalagmite: 42, spikes: 15, bigspikes: 42 };
 
 /**
  * How far a hazard reaches either side of its anchor, in tiles. A `bigspikes` group is
- * three 60px bodies on a 48px step, so its collidable span is 156px centred on x — wider
- * than any single-tile hazard, and the reason every rule below asks rather than assumes.
+ * three sprites on a 48px step, so it is wider than any single-tile hazard — the reason
+ * every rule below asks rather than assumes.
  */
 /**
- * Collidable width in PIXELS. The tile version below rounds outward, which is right for
- * "which tiles must be solid ground" and wrong for "can a jump clear this" — rounding a
- * 156px group out to 6 tiles overstates it by 36px and reports a fair hazard as tight.
+ * Collidable width in PIXELS — bodies, not sprites. The tile version below rounds outward,
+ * which is right for "which tiles must be solid ground" and wrong for "can a jump clear
+ * this": rounding out overstates the span and reports a fair hazard as tight.
  */
 function hazardSpanPx(e) {
   if (e.type === 'spikes') return (e.w || 1) * TILE;
@@ -114,12 +117,18 @@ function hazardSpanPx(e) {
   return TILE;
 }
 
+/**
+ * Tile footprint, measured on the DRAWN width, which for a big spike is 72px against a
+ * 42px body. The two differ on purpose: the body is inscribed in the cluster's silhouette
+ * (see entities.js), so using it here would let the painted base of a ridge hang out over
+ * a pit while every rule reported solid ground underneath.
+ */
 function hazardTiles(e) {
   if (e.type === 'spikes') return { from: e.x, to: e.x + (e.w || 1) - 1 };
   if (e.type === 'bigspikes') {
     const count = e.count || 3;
     const step = e.step || 48;
-    const halfPx = ((count - 1) * step + BIGSPIKE_BODY_W) / 2;
+    const halfPx = ((count - 1) * step + BIGSPIKE_ART_W) / 2;
     return { from: Math.floor(e.x - halfPx / TILE), to: Math.ceil(e.x + halfPx / TILE) - 1 };
   }
   return { from: e.x, to: e.x };
@@ -668,6 +677,76 @@ for (const e of hoppables) {
     warnings.push(
       `${e.type} at x=${e.x} is only ${gapPx.toFixed(0)}px before the pit lip at ${lip} ` +
         `(want ${SAFE_HAZARD_TO_LIP.toFixed(0)}px for a hop plus a re-jump)`
+    );
+  }
+}
+
+// --- hazards after pit landings ----------------------------------------------
+/**
+ * The rule that was missing, and the one the big spikes were breaking.
+ *
+ * The lip rule above looks only FORWARD: it asks whether hopping a hazard drops you into
+ * the next pit. Nothing asked the mirror question — whether the jump OUT of the previous
+ * pit dumps you on top of the next hazard. Every one of the level's big-spike ridges was
+ * failing exactly that, and a physics validator that passes a level you cannot survive is
+ * worse than no validator, so it is measured here rather than eyeballed.
+ *
+ * What is measured, in pixels of ground:
+ *
+ *   landing   the far end of the landing spread out of the previous pit. The player picks
+ *             the hold, so this is the FULL-hold landing, not the minimum one — punishing
+ *             a generous jump over a pit that asked for a jump is not a challenge.
+ *   takeoff   the last x at which leaving the ground still carries the player over the
+ *             whole hazard, from the arc's own above-the-tip window.
+ *
+ * `window` is takeoff - landing: the ground the player actually has to work with. A jump
+ * buffered on touchdown fires at the start of that window, so the window IS the slop. At
+ * zero only a frame-perfect buffered press survives; below zero the landing is inside the
+ * hazard and there is no line at all.
+ */
+const SAFE_LANDING_WINDOW = (JUMP_BUFFER_MS / 1000) * RUN_SPEED;
+
+/** Horizontal span of a full-hold jump measured from take-off, while at least `rise` up. */
+function aboveWindow(rise) {
+  const above = trajectory().filter((p) => -p.y >= rise);
+  return above.length ? { from: above[0].x, to: above[above.length - 1].x } : null;
+}
+
+for (const e of ENTITIES) {
+  const rise = HAZARD_RISE[e.type];
+  if (rise === undefined) continue;
+
+  const centre = (e.x + 0.5) * TILE;
+  const bodyLeft = centre - hazardSpanPx(e) / 2;
+  const bodyRight = centre + hazardSpanPx(e) / 2;
+
+  const pit = [...pits].reverse().find((p) => (p.end + 1) * TILE < bodyLeft);
+  if (!pit) continue;
+
+  const arc = aboveWindow(rise + 4); // a little daylight over the tip
+  if (!arc) continue;
+
+  const pitRise = (pit.takeoffRow - pit.landingRow) * TILE;
+  const pitTakeoff = pit.start * TILE - PLAYER_BODY_W / 2;
+  const landing = pitTakeoff + reachForRise(pitRise, HOLD_MAX_MS) - PLAYER_BODY_W / 2;
+  const lastTakeoff = bodyLeft - PLAYER_BODY_W / 2 - arc.from;
+  const window = lastTakeoff - landing;
+
+  // A hazard far enough past the pit that the arc is irrelevant needs no check: the
+  // player is running on flat ground long before they reach it.
+  if (window > MIN_HOP_PX) continue;
+
+  const where = `${e.type} at x=${e.x}`;
+  const how = `landing out of the pit at ${pit.start}-${pit.end}`;
+  if (window < 0) {
+    errors.push(
+      `${where} leaves ${window.toFixed(0)}px between ${how} and the last take-off that clears it — ` +
+        'a full-hold jump over that pit lands on the hazard'
+    );
+  } else if (window < SAFE_LANDING_WINDOW) {
+    warnings.push(
+      `${where} leaves only ${window.toFixed(0)}px (${((window / RUN_SPEED) * 1000).toFixed(0)}ms) between ${how} ` +
+        `and the last take-off that clears it (want ${SAFE_LANDING_WINDOW.toFixed(0)}px, one jump buffer)`
     );
   }
 }

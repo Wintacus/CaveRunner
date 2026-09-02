@@ -92,17 +92,34 @@ export class Stalagmite extends Entity {
 }
 
 /**
- * The big spike. 66px of body against the small spike's 15px, and against a stalagmite's
- * 42px — tall enough that clearing it is a committed jump rather than a hop, which is the
- * whole reason it exists. The body covers all but 8px of the sprite, so what you can see is
- * what will hurt you.
+ * The big spike: a 42px body, matching a stalagmite's height but four times its width once
+ * three of these overlap into a ridge. The demand is length, not altitude.
+ *
+ * The body was 60x66 at offset (6,8) and that was an invisible wall. The art is a spike
+ * CLUSTER — a broad base with thin spires rising out of it — so its silhouette is not a
+ * rectangle. Measured row by row on the 72x74 texture, the widest centred box that fits
+ * inside the drawn shape is:
+ *
+ *     from y=8  (the old body top)   4px      the spire is six pixels wide up there
+ *     from y=20                     12px
+ *     from y=32                     42px  <-- the knee, where the side spikes begin
+ *     from y=48                     48px
+ *
+ * So the old box overhung the art by up to 27px on EACH side for its top 24 rows, at
+ * exactly the height a jump passes through. Composited across three sprites it was a solid
+ * 156x66 block standing behind art that is 11% filled at that height. You died to nothing
+ * you could see, on the rise of a jump, a full sprite-width before the first visible tip.
+ *
+ * 42x42 at (15,32) is that knee: exactly inscribed, centred on the texture, base flush with
+ * the ground. The spires above it are grace — brushing a tip and living is the intended
+ * read, and it is the direction this project already chose for the player's own hitbox.
  */
 export class SpikeBig extends Entity {
   constructor(scene) {
     super(scene, KEYS.spikeBig);
     this.setOrigin(0.5, 1).setDepth(12);
-    this.body.setSize(60, 66, false);
-    this.body.setOffset(6, 8);
+    this.body.setSize(42, 42, false);
+    this.body.setOffset(15, 32);
   }
 }
 

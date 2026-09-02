@@ -151,17 +151,25 @@ const hazards = [
   { type: 'stalactite', x: 323, len: 5 }, // over the pit at 321-325
 
   // Segment 3 — statics combined with both creature types.
-  { type: 'stalagmite', x: 496, y: 14 },
+  // Pushed from 496 to make room for the ridge above: at 496 the gap to it was 96px, under
+  // the 192px shortest hop, which merges the two into one unclearable wall. 499 restores a
+  // 192px gap and still leaves 256px to the pit lip at 507.
+  { type: 'stalagmite', x: 499, y: 14 },
   { type: 'stalactite', x: 423, len: 5 }, // over the pit at 421-425
   // Three overlapping big spikes rather than five small ones in a row. A row of identical
   // one-tile sprites reads as tiling; three interlocking silhouettes read as a ridge. And
   // at 58px of body against 15px it is a committed jump rather than a hop — the length was
   // previously the only thing these asked for, because they were barely off the ground.
-  { type: 'bigspikes', x: 545, y: 14 },
+  { type: 'bigspikes', x: 549, y: 14 },
   { type: 'stalactite', x: 563, len: 5 }, // over the pit at 561-565: punishes over-jumping
-  // Set clear of the stalagmite at 496 by more than the 192px shortest hop, so the two are
-  // separate obstacles rather than one unclearable wall.
-  { type: 'bigspikes', x: 484, y: 14 },
+  // Was 484, four tiles after the pit at 473-478 — and a full-hold jump over that pit
+  // landed 26px INSIDE the ridge. All four of these groups were placed by their spacing
+  // from other hazards and not one of them was checked against the arc coming out of the
+  // pit before it, which is the only jump the player is actually mid-way through when the
+  // ridge comes into view. See the landing-window rule in tools/validate-level.mjs.
+  // 490 buys 135px (364ms) of ground between the worst-case landing and the last take-off
+  // that still clears the ridge.
+  { type: 'bigspikes', x: 490, y: 14 },
   { type: 'stalagmite', x: 606, y: 12 }, // kept clear of the pit lip at 616 (see below)
   { type: 'stalagmite', x: 638, y: 14 }, // fills the long approach to checkpoint 3
 
@@ -176,8 +184,8 @@ const hazards = [
   // there is two tiles less headroom here than over a floor-level pit.
   { type: 'stalactite', x: 703, len: 4 }, // over the pit at 701-705
   { type: 'stalactite', x: 778, len: 5 }, // over the last pit, 776-781
-  { type: 'bigspikes', x: 756, y: 14 },
-  { type: 'bigspikes', x: 794, y: 14 } // last beat before the run-in to the goal
+  { type: 'bigspikes', x: 761, y: 14 }, // was 756: 19ms of ground out of the pit at 743-748
+  { type: 'bigspikes', x: 794, y: 14 } // last beat before the run-in to the goal; already clear
 ];
 
 const creatures = [
@@ -378,13 +386,14 @@ trail(428, 440, 13, 6); // threaded between the spiders at 436 and 443
 pitArc(451, 3);
 trail(456, 470, 11, 4);
 pitArc(473);
-trail(482, 504, 13, 6);
+trail(482, 484, 13, 2); // stops short of the ridge at 490, and of the bat at 486
+trail(496, 504, 13, 4); // picks up again past it, threading the stalagmite at 499
 pitArc(507);
 trail(513, 521, 10, 4);
 trail(529, 529, 10, 4); // clear of the bat at 523
 pitArc(531);
 trail(538, 543, 13, 3);
-gem(551, 13);
+gem(544, 13); // was 551, which the ridge at 549 now stands on
 gem(556, 13);
 pitArc(561, 3, { holdMs: 90 }); // forced low: the stalactite tip hangs over this pit
 trail(568, 578, 13, 5); // threaded past the bat at 575
@@ -409,9 +418,8 @@ pitArc(721);
 trail(728, 731, 11, 3);
 trail(737, 741, 11, 4); // clear of the bat at 734
 pitArc(743);
-trail(750, 754, 13, 2);
-trail(760, 764, 13, 4);
-trail(769, 774, 13, 3); // clear of the bat at 766
+trail(750, 756, 13, 3); // stops short of the ridge at 761
+trail(769, 774, 13, 2); // resumes past the ridge at 761, clear of the bat at 766
 pitArc(776);
 trail(783, 791, 13, 3);
 trail(800, 810, 13, 3); // run-in to the goal at 812
