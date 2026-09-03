@@ -97,6 +97,26 @@ const CORNER_DEPTH = 3.7;
 const CORNER_WIDE = 2.1;
 
 /**
+ * The tip cap: the piece that actually sits on the corner.
+ *
+ * Placed by its centre, a little inside the true edge and a little below the lip, so the
+ * lobe covers the last of the moss, the top of the vertical edge, and the right angle
+ * between them. `CAP_DEPTH` puts it over the tilemap and over every other dressing layer
+ * but under the hazards and the player, so nothing a player has to see is hidden by it.
+ */
+const CAP_INSET = 5; // centre this far back from the edge, toward the platform
+const CAP_RISE = 10; // and this far below the lip, so the lobe stands ~7px proud of it
+const CAP_DEPTH = 4;
+
+/**
+ * Lip nubs. `TUFT_SIT` is the origin's y, and Phaser measures it from the top: 0.14 puts
+ * 14% of the piece above the surface and the rest below, so only its top few pixels break
+ * the line.
+ */
+const TUFT_SIT = 0.14;
+const TUFT_DEPTH = 4.2;
+
+/**
  * Broken rock along the top of the face, thicker near a corner where debris would gather.
  * Dropped below the moss band rather than sitting on it: the moss is the cue the player
  * reads platform edges by, and 125 clumps laid across it buried the very thing they jump by.
@@ -274,6 +294,10 @@ export function dressPlatforms(scene, map, layer, defs = []) {
   const cornersL = Array.from({ length: 14 }, (_, i) => `cl${i}`).filter((f) => atlas.has(f));
   const cornerBagR = bag(rng, Math.max(1, cornersR.length));
   const cornerBagL = bag(rng, Math.max(1, cornersL.length));
+  const capsR = Array.from({ length: 10 }, (_, i) => `tr${i}`).filter((f) => atlas.has(f));
+  const capsL = Array.from({ length: 10 }, (_, i) => `tl${i}`).filter((f) => atlas.has(f));
+  const capBagR = bag(rng, Math.max(1, capsR.length));
+  const capBagL = bag(rng, Math.max(1, capsL.length));
   const rubbleR = Array.from({ length: 8 }, (_, i) => `rr${i}`).filter((f) => atlas.has(f));
   const rubbleL = Array.from({ length: 9 }, (_, i) => `rl${i}`).filter((f) => atlas.has(f));
   const rubbleAll = [...rubbleR, ...rubbleL];
@@ -411,6 +435,28 @@ export function dressPlatforms(scene, map, layer, defs = []) {
       corner(cornersR, cornerBagR, left + width, true);
       corner(cornersL, cornerBagL, left, false);
 
+      // And the cap, right on the tip. Two overlapping lobes per corner at slightly
+      // different offsets: one alone leaves the moss line running out from under it in a
+      // readable straight segment, and the second breaks that.
+      const cap = (frames, pick, edgeX, right) => {
+        if (!frames.length) return;
+        const lipY = run.top * TILE;
+        for (let i = 0; i < 2; i++) {
+          const frame = frames[pick()];
+          const dx = right ? -CAP_INSET - i * 9 : CAP_INSET + i * 9;
+          const dy = CAP_RISE + i * 4;
+          made.push(
+            scene.add
+              .image(edgeX + dx, lipY + dy, KEYS.wallAtlas, frame)
+              .setOrigin(0.5, 0.5)
+              .setScale(1 - i * 0.18)
+              .setDepth(CAP_DEPTH + i * 0.01)
+          );
+        }
+      };
+      cap(capsR, capBagR, left + width, true);
+      cap(capsL, capBagL, left, false);
+
       // Broken rock along the lip, densest near the ends where debris would collect.
       if (rubbleAll.length && run.w >= 3) {
         let rx = left + 6;
@@ -430,6 +476,41 @@ export function dressPlatforms(scene, map, layer, defs = []) {
           rx += nearEnd ? 34 + rng.frac() * 26 : 90 + rng.frac() * 120;
         }
       }
+
+      // Nubs that straddle the lip itself.
+      //
+      // The walking surface is a plane, so its silhouette against the lit background is a
+      // straight line and no amount of work on the moss changes that — the moss can only
+      // stop being a bright bar drawn *on* the line. What breaks the line is small pieces
+      // of rock standing proud of it, the same thing that fixed the corner. They are only
+      // a few pixels tall (TUFT_SIT keeps most of each piece below the surface) and dark,
+      // so they read as the edge being rough rather than as anything to jump over, and
+      // they carry no body: nothing here changes what the player collides with.
+      if (rubbleAll.length && run.w >= 2) {
+        let tx = left + 10;
+        const tEnd = left + width - 10;
+        while (tx < tEnd) {
+          if (!nearHazard(tx)) {
+            const frame = rubbleAll[rng.between(0, rubbleAll.length - 1)];
+            const f = atlas.get(frame);
+            // Sized in pixels, not by a scale factor. The rubble frames run from 20px wide
+            // to over 80, so a shared factor made some of them wide flat slabs lying along
+            // the lip — which smears the line rather than breaking it. A nub has to be
+            // narrower than the gap to the next one or it is just a second line.
+            const wPx = 9 + rng.frac() * 12;
+            const hPx = 30 + rng.frac() * 18; // TUFT_SIT of this stands proud: ~4-7px
+            made.push(
+              scene.add
+                .image(tx, run.top * TILE + 1, KEYS.wallAtlas, frame)
+                .setOrigin(0.5, TUFT_SIT)
+                .setScale(wPx / f.width, hPx / f.height)
+                .setDepth(TUFT_DEPTH)
+                .setFlipX(rng.frac() > 0.5)
+            );
+          }
+          tx += 30 + rng.frac() * 52;
+        }
+      }
     }
 
     // Growth along the lip. Kept a tile clear of both ends: a mushroom cluster centred on
@@ -438,7 +519,7 @@ export function dressPlatforms(scene, map, layer, defs = []) {
     let at = left + TILE + rng.frac() * TILE;
     const end = left + width - TILE;
     while (at < end) {
-      const standing = rng.frac() > 0.42;
+      const standing = rng.frac() > 0.32;
       const pool = standing ? STANDING : HANGING;
       const key = growthKey(pool[rng.between(0, pool.length - 1)]);
       if (has(key) && !nearHazard(at)) {
@@ -450,7 +531,11 @@ export function dressPlatforms(scene, map, layer, defs = []) {
             .setFlipX(rng.frac() > 0.5)
         );
       }
-      at += 72 + rng.frac() * 110;
+      // Closer than it was. Growth standing on the lip is the only thing that crosses the
+      // platform's top silhouette, and that silhouette is the longest straight line on
+      // screen — a clump every 200px on average left it reading as a ruled edge with the
+      // occasional mushroom on it.
+      at += 46 + rng.frac() * 72;
     }
   });
 

@@ -60,23 +60,80 @@ function stone(id, base, seed) {
   return { ox, oy, rng };
 }
 
-/** Glowing moss lip along one edge — the readable "this is a surface" cue. */
+/**
+ * Glowing moss lip along one edge — the readable "this is a surface" cue.
+ *
+ * This used to paint a fixed 2-4 rows at a fixed 0.85, plus a uniform bleed band under it.
+ * Every column got the same treatment, so it came out as a bright bar with a ruled top and
+ * a ruled bottom, running the length of the level. On a wall of hand-painted rock it was
+ * the one obviously machine-drawn thing in frame, and the eye went straight to it.
+ *
+ * Now the mat has a depth and a brightness that both undulate, out of phase with each
+ * other, so neither the bottom of the band nor its glow draws a line. The undulation is a
+ * sum of integer harmonics of the TILE width, which matters: the tile repeats, so anything
+ * that is not periodic over exactly 32px puts a step at every tile join and trades one
+ * straight line for a row of them.
+ */
 function mossEdge(ox, oy, rng, colour, { flip = false, bright = 1 } = {}) {
   const edgeY = flip ? oy + TILE - 1 : oy;
   const dir = flip ? -1 : 1;
+  // Phases from the tile's own rng, so the ground lip and the ledge lip do not undulate in
+  // lock-step and a ledge above bedrock does not echo the shape below it.
+  const ph = [rng(), rng(), rng(), rng()].map((v) => v * Math.PI * 2);
+  const wave = (x, amp) =>
+    amp *
+    (0.55 * Math.sin((2 * Math.PI * x) / TILE + ph[0]) +
+      0.28 * Math.sin((4 * Math.PI * x) / TILE + ph[1]) +
+      0.12 * Math.sin((6 * Math.PI * x) / TILE + ph[2]) +
+      0.05 * Math.sin((10 * Math.PI * x) / TILE + ph[3]));
+
   for (let x = 0; x < TILE; x++) {
-    const thickness = 2 + Math.floor(rng() * 3);
-    for (let t = 0; t < thickness; t++) {
-      raster.blend(ox + x, edgeY + dir * t, colour, (0.85 - t * 0.22) * bright);
+    // Both ends of the mat move. Only varying the depth left row 0 lit in every column,
+    // which is a ruled line along the top of the level however ragged the underside is —
+    // and it is the top edge the eye actually follows. So the mat also starts at a
+    // different row per column: bare rock shows through at the surface in places, the way
+    // moss actually grows on a ledge.
+    // Mixed frequencies. A single fundamental moved the whole mat up and down together,
+    // which came out as a neon squiggle rather than moss: one smooth curve, obviously
+    // drawn. Adding a harmonic three times as fast — still an integer multiple of TILE, so
+    // still seamless across the join — breaks the curve up. The top moves less than the
+    // bottom, so what mostly varies is the mat's thickness, not its position.
+    // Kept shallow and bright. A deep mat tints eight rows of rock and the lip stops
+    // reading as a lip — it becomes a wide olive wash across the platform. It also has a
+    // second job: the platform is dark and the cavern behind it is not, so the lip is what
+    // stands between a very bright background and a very dark face. Dim it and that step
+    // gets harder, not softer, which is the opposite of what all this is for.
+    // Only a little. Pushing the mat 2-3 rows down left bare rock at the silhouette and
+    // buried the glow behind it, which reads darker and *harder* than the ruled line it
+    // replaced. Under a row of jitter is enough to stop the top scanning as drawn.
+    // Clamped at zero rather than centred on a positive offset. Any constant offset, however
+    // small, leaves the platform's topmost row bare in *every* column — one dark row along
+    // the whole silhouette, which is both a ruled line and the loss of the glow. Clamping
+    // means most columns still light up at row 0 and the rest step down behind them.
+    const top = Math.max(0, -0.35 + wave(x + 3, 0.95) + wave(3 * x + 5, 0.7));
+    const depth = 4.4 + wave(x + 11, 1.5) + wave(2 * x + 3, 0.9);
+    // Floored well above zero: patchy is the point, but the lip is what the player reads a
+    // jump from, and a column that goes dark is a hole in that cue.
+    const lit = 0.86 + wave(x + 11, 0.14);
+    for (let t = 0; t < 12; t++) {
+      const q = (t - top) / depth;
+      if (q < 0 || q >= 1) continue;
+      // Fades in over its own first rows as well as out over its last, so the mat has
+      // neither a first row nor a last row to line up with its neighbours.
+      // Decays from the mat's own top, at full strength on that first row. An earlier
+      // version faded in over the first row or two to avoid a hard start, which zeroed
+      // row 0 by construction in every column — the fade-in *was* the dark line it was
+      // meant to prevent. The raggedness has to come from which row the mat starts on,
+      // not from softening the row it starts on.
+      const f = Math.pow(1 - q, 1.5);
+      raster.blend(ox + x, edgeY + dir * t, colour, Math.min(1, f * lit * bright));
     }
   }
-  // Occasional brighter tufts + bleed into the rock.
+
+  // Brighter tufts, at the depth the mat happens to have where they land.
   for (let i = 0; i < 4; i++) {
-    const x = ox + Math.floor(rng() * TILE);
-    raster.glow(x, edgeY + dir * 2, 4 + rng() * 3, colour, 0.35 * bright);
-  }
-  for (let x = 0; x < TILE; x++) {
-    for (let t = 3; t < 8; t++) raster.blend(ox + x, edgeY + dir * t, colour, 0.05 * (8 - t) * 0.25 * bright);
+    const x = Math.floor(rng() * TILE);
+    raster.glow(ox + x, edgeY + dir * (1 + Math.round(rng() * 3)), 4 + rng() * 3, colour, 0.35 * bright);
   }
 }
 

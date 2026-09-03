@@ -1237,6 +1237,111 @@ function makeCorner(img, right) {
   return c;
 }
 
+/**
+ * The cap that goes over the tip of a platform end.
+ *
+ * The pit corner is a right angle because it is one: the ground tile is a 32px square and
+ * the moss lip stops dead at its edge. Everything the dressing adds sits *below* the lip,
+ * by design — the old rule was that nothing may overhang the walking surface — so the one
+ * pixel that actually needed covering was the one pixel guaranteed to stay bare. Every
+ * previous attempt dressed the face and left the corner untouched.
+ *
+ * This is the fix stated plainly: a small rounded lobe of painted rock, laid over the tip,
+ * hiding the last of the moss and the top of the vertical edge. Its outline is a radius
+ * modulated by three odd harmonics of the angle, so it is round without being a circle and
+ * has no straight run anywhere on it, and the alpha ramps to nothing over the outer third
+ * so it has no edge of its own to see. The texture inside is the painted rock, untouched —
+ * painted texture, procedural silhouette, which is the only division that has worked here.
+ *
+ * It does overhang, a little. That is deliberate and it is what was asked for: the lobe is
+ * dark rock reading as mass below the corner, never as surface, and CAP_OVER keeps it
+ * short enough that no one will try to stand on it.
+ */
+const CAP_W = 36;
+const CAP_H = 34;
+const CAP_SRC_H = 52; // rows of the edge column to sample
+
+/**
+ * Pick the densest band of the source column.
+ *
+ * The pit-edge sheets are ragged: a fixed sample window landed on rows that were mostly
+ * holes, and the first caps came out at a mean alpha of 46/255 — a ghost laid over the
+ * corner, which is exactly as good as nothing. Measuring instead of assuming costs one
+ * pass over the image at boot and makes the cap solid whichever sheet it is cut from.
+ */
+function densestBand(ctx, w, h) {
+  const d = ctx.getImageData(0, 0, w, h).data;
+  const rowA = new Float64Array(h);
+  for (let y = 0; y < h; y++) {
+    let s = 0;
+    for (let x = 0; x < w; x++) s += d[(y * w + x) * 4 + 3];
+    rowA[y] = s / w;
+  }
+  let best = 0;
+  let bestSum = -1;
+  for (let y = 0; y + CAP_SRC_H <= h; y++) {
+    let s = 0;
+    for (let k = 0; k < CAP_SRC_H; k++) s += rowA[y + k];
+    if (s > bestSum) {
+      bestSum = s;
+      best = y;
+    }
+  }
+  return best;
+}
+
+function makeTipCap(img, right, seed) {
+  const meas = document.createElement('canvas');
+  meas.width = img.width;
+  meas.height = img.height;
+  const mctx = meas.getContext('2d', { willReadFrequently: true });
+  mctx.drawImage(img, 0, 0);
+  const from = densestBand(mctx, img.width, img.height);
+
+  const c = document.createElement('canvas');
+  c.width = CAP_W;
+  c.height = CAP_H;
+  const ctx = c.getContext('2d', { willReadFrequently: true });
+  const sh = Math.min(img.height - from, CAP_SRC_H);
+  const put = (dx, dy) => ctx.drawImage(img, 0, from, img.width, sh, dx, dy, CAP_W, CAP_H);
+  // Three offset passes. Painted rock over painted rock keeps the colour but compounds the
+  // alpha (1-(1-a)^n), and the offsets fill the pinholes a single pass leaves behind. The
+  // lobe has to be opaque enough to actually hide the corner under it; a translucent one
+  // just tints the right angle instead of covering it.
+  put(0, 0);
+  put(right ? 2 : -2, 1);
+  put(right ? -1 : 1, -2);
+  if (right) {
+    // Mirror, so the two ends of a pit are not the same rock twice.
+    ctx.save();
+    ctx.setTransform(-1, 0, 0, 1, CAP_W, 0);
+    ctx.drawImage(c, 0, 0);
+    ctx.restore();
+  }
+
+  const d = ctx.getImageData(0, 0, CAP_W, CAP_H);
+  const smooth = (t) => (t <= 0 ? 0 : t >= 1 ? 1 : t * t * (3 - 2 * t));
+  const p1 = seed * 1.7;
+  const p2 = seed * 2.9 + 1.1;
+  const p3 = seed * 4.3 + 2.7;
+  for (let y = 0; y < CAP_H; y++) {
+    for (let x = 0; x < CAP_W; x++) {
+      const u = (x + 0.5) / CAP_W * 2 - 1;
+      const v = (y + 0.5) / CAP_H * 2 - 1;
+      const r = Math.hypot(u, v);
+      const a = Math.atan2(v, u);
+      // Odd harmonics only: an even one would make the lobe symmetric about its own axis,
+      // which reads as a drawn shape rather than as a piece of rock.
+      const R =
+        1 + 0.20 * Math.sin(3 * a + p1) + 0.12 * Math.sin(5 * a + p2) + 0.07 * Math.sin(7 * a + p3);
+      const i = (y * CAP_W + x) * 4;
+      d.data[i + 3] *= smooth((R - r) / (R * 0.42));
+    }
+  }
+  ctx.putImageData(d, 0, 0);
+  return c;
+}
+
 function makeWallAtlas(scene) {
   const names = [
     ...Array.from({ length: WALL_COUNT }, (_, i) => [`w${i}`, ART_FILES[`wall${i}`].key]),
@@ -1262,6 +1367,11 @@ function makeWallAtlas(scene) {
   const edgeImgs = (p) => imgs.filter((e) => e.frame.startsWith(p)).map((e) => e.img);
   edgeImgs('er').forEach((im, i) => { if (i < 14) imgs.push({ frame: `cr${i}`, img: makeCorner(im, true) }); });
   edgeImgs('el').forEach((im, i) => { if (i < 14) imgs.push({ frame: `cl${i}`, img: makeCorner(im, false) }); });
+
+  // Tip caps, from the same columns. One per side per frame; the mirror inside makeTipCap
+  // keeps the left and right ends of the same pit from showing identical rock.
+  edgeImgs('er').forEach((im, i) => { if (i < 10) imgs.push({ frame: `tr${i}`, img: makeTipCap(im, true, i + 1) }); });
+  edgeImgs('el').forEach((im, i) => { if (i < 10) imgs.push({ frame: `tl${i}`, img: makeTipCap(im, false, i + 7) }); });
 
   const MAX_W = 2048;
   const PAD = 1; // transparent gutter, so bilinear sampling cannot bleed one panel into the next
