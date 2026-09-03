@@ -156,6 +156,14 @@ export const ART_FILES = {
           { key: `art_${stem}_${i}`, path: `assets/art/platform/${stem}-${String(i).padStart(2, '0')}.webp` }
         ])
       ),
+    // Broken rock fringe, scattered along the lip. Delivered as corner shoulders, measured
+    // as having nothing at the top, so used for what they actually are.
+    ...Array.from({ length: 8 }, (_, i) => [
+      `rubbleR${i}`, { key: `art_rubble_r_${i}`, path: `assets/art/platform/rubble-r-0${i}.webp` }
+    ]),
+    ...Array.from({ length: 9 }, (_, i) => [
+      `rubbleL${i}`, { key: `art_rubble_l_${i}`, path: `assets/art/platform/rubble-l-0${i}.webp` }
+    ]),
     // Underhangs, three depths, all drawn IN FRONT of the platform. See platform-dressing.js.
     ...[['far', 12], ['mid', 12], ['near', 16]].flatMap(([name, n]) =>
       Array.from({ length: n }, (_, i) => [
@@ -1165,6 +1173,70 @@ const EDGE_L = ['edge-l-a:13', 'edge-l-b:13', 'edge-l-c:12'];
 const FAR_COUNT = 12;
 const MID_COUNT = 12;
 const NEAR_COUNT = 16;
+/**
+ * Corner mounds, derived from the pit-edge columns rather than drawn.
+ *
+ * The pit edges broke up the lower two thirds of every platform end but not the corner
+ * itself: measured across all 72 of them, alpha coverage runs 23-32% in the top quarter
+ * against 28-44% through the middle. They are hanging columns, thin exactly where the
+ * walking surface turns and drops. A sheet of purpose-drawn shoulders was commissioned and
+ * came back as a rubble fringe with 0-2% coverage in its top band — the opposite of what a
+ * corner needs — so the mass is taken from the columns' own dense middle instead.
+ *
+ * Two rules shape the mask, and both come from things that have already gone wrong here.
+ *
+ * NO STRAIGHT BOUNDARY ANYWHERE. Cropping a band out of a painted piece gives a rectangle
+ * of rock with four hard edges, which reads as a pasted block — the same failure as every
+ * other straight line in this level. The band is masked by a smooth window in both axes, so
+ * its outline is a soft mound and there is no edge to see. The texture inside stays painted;
+ * only the silhouette is procedural, which is the division that has worked every time.
+ *
+ * NOTHING OVERHANGS AT THE WALKING SURFACE. Beyond the platform's true edge the mask starts
+ * LIP_CLEAR rows lower, ramped in over a few pixels. A player must never see ground that is
+ * not there, and this is cheaper to guarantee here than to verify in art.
+ */
+const CORNER_BAND_FROM = 42;
+const CORNER_BAND_H = 50;
+const CORNER_LIP_CLEAR = 9;
+const CORNER_EDGE_FRAC = 0.5;
+
+function makeCorner(img, right) {
+  const W = img.width;
+  const H = CORNER_BAND_H;
+  const c = document.createElement('canvas');
+  c.width = W;
+  c.height = H;
+  const ctx = c.getContext('2d', { willReadFrequently: true });
+  ctx.drawImage(img, 0, CORNER_BAND_FROM, W, H, 0, 0, W, H);
+
+  const d = ctx.getImageData(0, 0, W, H);
+  const edge = W * CORNER_EDGE_FRAC;
+  const smooth = (t) => (t <= 0 ? 0 : t >= 1 ? 1 : t * t * (3 - 2 * t));
+
+  for (let y = 0; y < H; y++) {
+    // In: fades up under the moss. Out: dissolves down into the column already there.
+    const wyTop = smooth(y / 7);
+    const wyBot = smooth((H - y) / (H * 0.45));
+    for (let x = 0; x < W; x++) {
+      // Distance from the inner end, so the mound thins back along the platform and again
+      // as it reaches out over the pit. Longer fade on the inner side: it has rock to melt
+      // into, while the outer side is a silhouette against open cave and must stay crisp.
+      const u = right ? x / W : (W - 1 - x) / W;
+      const wx = smooth(u / 0.34) * smooth((1 - u) / 0.16);
+
+      // The safety rule, as a shape: past the true edge the rock starts lower down.
+      const beyond = right ? x - edge : edge - x;
+      const clear = beyond <= 0 ? 0 : CORNER_LIP_CLEAR * smooth(beyond / 7);
+      const wLip = smooth((y - clear) / 5);
+
+      const i = (y * W + x) * 4;
+      d.data[i + 3] *= wyTop * wyBot * wx * wLip;
+    }
+  }
+  ctx.putImageData(d, 0, 0);
+  return c;
+}
+
 function makeWallAtlas(scene) {
   const names = [
     ...Array.from({ length: WALL_COUNT }, (_, i) => [`w${i}`, ART_FILES[`wall${i}`].key]),
@@ -1176,6 +1248,8 @@ function makeWallAtlas(scene) {
       const n = Number(spec.split(':')[1]);
       return Array.from({ length: n }, (_, i) => [`er${gi}_${i}`, ART_FILES[`edgeR_${gi}_${i}`].key]);
     }),
+    ...Array.from({ length: 8 }, (_, i) => [`rr${i}`, ART_FILES[`rubbleR${i}`].key]),
+    ...Array.from({ length: 9 }, (_, i) => [`rl${i}`, ART_FILES[`rubbleL${i}`].key]),
     ...EDGE_L.flatMap((spec, gi) => {
       const n = Number(spec.split(':')[1]);
       return Array.from({ length: n }, (_, i) => [`el${gi + 3}_${i}`, ART_FILES[`edgeL_${gi + 3}_${i}`].key]);
@@ -1183,6 +1257,11 @@ function makeWallAtlas(scene) {
   ];
   const imgs = names.map(([frame, key]) => ({ frame, img: sourceImage(scene, key) })).filter((e) => e.img);
   if (!imgs.length) return;
+
+  // Corner mounds, built from the pit-edge columns. Same atlas, so they cost no draw calls.
+  const edgeImgs = (p) => imgs.filter((e) => e.frame.startsWith(p)).map((e) => e.img);
+  edgeImgs('er').forEach((im, i) => { if (i < 14) imgs.push({ frame: `cr${i}`, img: makeCorner(im, true) }); });
+  edgeImgs('el').forEach((im, i) => { if (i < 14) imgs.push({ frame: `cl${i}`, img: makeCorner(im, false) }); });
 
   const MAX_W = 2048;
   const PAD = 1; // transparent gutter, so bilinear sampling cannot bleed one panel into the next

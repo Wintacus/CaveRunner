@@ -44,7 +44,9 @@ const SHEETS = [
   '12c-pit-edge-right.png',
   '13-pit-edge-left.png',
   '13b-pit-edge-left.png',
-  '13c-pit-edge-left.png'
+  '13c-pit-edge-left.png',
+  '14-shoulder-right.png',
+  '15-shoulder-left.png'
 ];
 
 const browser = await chromium.launch({
@@ -102,7 +104,13 @@ const TARGET = {
   '12c-pit-edge-right.png': { h: 128, stem: 'edge-r-c', edgeFrac: 0.5, lipClear: 10 },
   '13-pit-edge-left.png': { h: 128, stem: 'edge-l-a', edgeFrac: 0.5, lipClear: 10 },
   '13b-pit-edge-left.png': { h: 128, stem: 'edge-l-b', edgeFrac: 0.5, lipClear: 10 },
-  '13c-pit-edge-left.png': { h: 128, stem: 'edge-l-c', edgeFrac: 0.5, lipClear: 10 }
+  '13c-pit-edge-left.png': { h: 128, stem: 'edge-l-c', edgeFrac: 0.5, lipClear: 10 },
+  // Sheets 14/15 were commissioned as corner shoulders and are not that: measured, their
+  // top band carries 0-2% alpha, so there is no mass where a corner needs it. What they are
+  // is a good fringe of small broken rock, and that is what they are used as. Drawn at about
+  // a third of the requested resolution, so pinned to a height rather than the usual 8:1.
+  '14-shoulder-right.png': { h: 26, stem: 'rubble-r', feather: 5, featherTop: 8 },
+  '15-shoulder-left.png': { h: 26, stem: 'rubble-l', feather: 5, featherTop: 8 }
 };
 
 /** Foreground dilation radius, per sheet. See the note beside its use. */

@@ -86,6 +86,24 @@ const EDGE_FRAC = 0.5;
 const EDGE_WIDE = 2;
 const EDGE_DEPTH = 3.6;
 
+/**
+ * Corner mounds. Two per corner from different frames, offset a little, because one is not
+ * dense enough on its own — the columns they are cut from are 28-44% filled at their best.
+ * `CORNER_DROP` starts them just under the moss so their soft top fades in below the lip the
+ * player reads edges by, rather than over it.
+ */
+const CORNER_DROP = 4;
+const CORNER_DEPTH = 3.7;
+const CORNER_WIDE = 2.1;
+
+/**
+ * Broken rock along the top of the face, thicker near a corner where debris would gather.
+ * Dropped below the moss band rather than sitting on it: the moss is the cue the player
+ * reads platform edges by, and 125 clumps laid across it buried the very thing they jump by.
+ */
+const RUBBLE_DEPTH = 2.5;
+const RUBBLE_DROP = 11;
+
 /** How far below a platform the underhang mass reaches, so an edge piece spans all of it. */
 const EDGE_SPAN_BELOW = 62;
 
@@ -252,6 +270,13 @@ export function dressPlatforms(scene, map, layer, defs = []) {
   const edgesL = edgeFrames('el', [[3, 13], [4, 13], [5, 12]]);
   const edgeBagR = bag(rng, edgesR.length);
   const edgeBagL = bag(rng, edgesL.length);
+  const cornersR = Array.from({ length: 14 }, (_, i) => `cr${i}`).filter((f) => atlas.has(f));
+  const cornersL = Array.from({ length: 14 }, (_, i) => `cl${i}`).filter((f) => atlas.has(f));
+  const cornerBagR = bag(rng, Math.max(1, cornersR.length));
+  const cornerBagL = bag(rng, Math.max(1, cornersL.length));
+  const rubbleR = Array.from({ length: 8 }, (_, i) => `rr${i}`).filter((f) => atlas.has(f));
+  const rubbleL = Array.from({ length: 9 }, (_, i) => `rl${i}`).filter((f) => atlas.has(f));
+  const rubbleAll = [...rubbleR, ...rubbleL];
 
   runs.forEach((run) => {
     const left = run.x * TILE;
@@ -363,6 +388,48 @@ export function dressPlatforms(scene, map, layer, defs = []) {
       };
       place(edgesR, edgeBagR, left + width, true);
       place(edgesL, edgeBagL, left, false);
+
+      // The corner itself. Two mounds per side from different frames, nudged apart, so the
+      // mass builds up: the columns they come from are holey, and one alone reads thin.
+      const corner = (frames, pick, edgeX, right) => {
+        if (!frames.length) return;
+        for (let i = 0; i < 2; i++) {
+          const frame = frames[pick()];
+          const f = atlas.get(frame);
+          const w = f.width * CORNER_WIDE;
+          const nudge = i === 0 ? 0 : (right ? -6 : 6);
+          const x0 = (right ? edgeX - Math.round(w * EDGE_FRAC) : edgeX - Math.round(w * (1 - EDGE_FRAC))) + nudge;
+          made.push(
+            scene.add
+              .image(x0, run.top * TILE + CORNER_DROP + i * 3, KEYS.wallAtlas, frame)
+              .setOrigin(0, 0)
+              .setScale(CORNER_WIDE, 1)
+              .setDepth(CORNER_DEPTH + i * 0.01)
+          );
+        }
+      };
+      corner(cornersR, cornerBagR, left + width, true);
+      corner(cornersL, cornerBagL, left, false);
+
+      // Broken rock along the lip, densest near the ends where debris would collect.
+      if (rubbleAll.length && run.w >= 3) {
+        let rx = left + 6;
+        const rEnd = left + width - 6;
+        while (rx < rEnd) {
+          const nearEnd = Math.min(rx - left, rEnd - rx) < 70;
+          if ((nearEnd || rng.frac() > 0.55) && !nearHazard(rx)) {
+            const frame = rubbleAll[rng.between(0, rubbleAll.length - 1)];
+            made.push(
+              scene.add
+                .image(rx, run.top * TILE + RUBBLE_DROP, KEYS.wallAtlas, frame)
+                .setOrigin(0.5, 0)
+                .setDepth(RUBBLE_DEPTH)
+                .setFlipX(rng.frac() > 0.5)
+            );
+          }
+          rx += nearEnd ? 34 + rng.frac() * 26 : 90 + rng.frac() * 120;
+        }
+      }
     }
 
     // Growth along the lip. Kept a tile clear of both ends: a mushroom cluster centred on
