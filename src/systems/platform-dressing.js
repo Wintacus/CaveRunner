@@ -68,6 +68,27 @@ const UNDERHANG_LAYERS = [
   { prefix: 'n', count: 16, depth: 3.2, over: 0.4, step: 1.9 }
 ];
 
+/**
+ * Pit edges: ragged rock laid over a platform's vertical end so it does not read as a
+ * machined right angle.
+ *
+ * `EDGE_FRAC` of each piece lies over the platform and the rest hangs into the pit. That
+ * overhang is the whole point — a piece that stops at the true edge changes nothing, which
+ * is how the first attempt failed. At the walking surface the art stops flush with the real
+ * edge; that is enforced in the cut script rather than here, by erasing the overhang side
+ * for the top rows, because a player must never see ground that is not there.
+ *
+ * `EDGE_WIDE` exists because the pieces are only 30-55px across and half of that is a 20px
+ * overhang, invisible at playing distance. Doubling them makes the overhang read; rock is
+ * organic enough that the stretch does not show.
+ */
+const EDGE_FRAC = 0.5;
+const EDGE_WIDE = 2;
+const EDGE_DEPTH = 3.6;
+
+/** How far below a platform the underhang mass reaches, so an edge piece spans all of it. */
+const EDGE_SPAN_BELOW = 62;
+
 /** Feature panels are inset a little so they read as set into the wall, not stuck on it. */
 const FEATURE_INSET_PX = 10;
 
@@ -218,8 +239,19 @@ export function dressPlatforms(scene, map, layer, defs = []) {
   const wallBag = bag(rng, WALL_COUNT);
   const featureBag = bag(rng, PANEL_COUNT);
   const underBags = UNDERHANG_LAYERS.map((l) => bag(rng, l.count));
+
   const atlas = scene.textures.get(KEYS.wallAtlas);
   const frameW = (name) => atlas.get(name).width;
+
+  // Every pit-edge frame in the atlas, split by side. Three sheets each, pooled: 36 right
+  // and 38 left means no pit in the level repeats a shape.
+  const edgeFrames = (prefix, groups) =>
+    groups.flatMap(([gi, n]) => Array.from({ length: n }, (_, i) => `${prefix}${gi}_${i}`))
+      .filter((f) => atlas.has(f));
+  const edgesR = edgeFrames('er', [[0, 12], [1, 12], [2, 12]]);
+  const edgesL = edgeFrames('el', [[3, 13], [4, 13], [5, 12]]);
+  const edgeBagR = bag(rng, edgesR.length);
+  const edgeBagL = bag(rng, edgesL.length);
 
   runs.forEach((run) => {
     const left = run.x * TILE;
@@ -308,6 +340,30 @@ export function dressPlatforms(scene, map, layer, defs = []) {
         ux += Math.max(12, f.width * layer.step);
       }
     });
+
+    // The vertical ends. One piece per end, stretched over the whole visible mass — the
+    // painted face AND the underhang below it — so the edge is broken top to bottom rather
+    // than only where the two happen to overlap.
+    {
+      const spanTop = run.top * TILE;
+      const spanH = bottomY + EDGE_SPAN_BELOW - spanTop;
+      const place = (frames, pick, edgeX, right) => {
+        if (!frames.length) return;
+        const frame = frames[pick()];
+        const f = atlas.get(frame);
+        const w = f.width * EDGE_WIDE;
+        const x0 = right ? edgeX - Math.round(w * EDGE_FRAC) : edgeX - Math.round(w * (1 - EDGE_FRAC));
+        made.push(
+          scene.add
+            .image(x0, spanTop, KEYS.wallAtlas, frame)
+            .setOrigin(0, 0)
+            .setScale(EDGE_WIDE, spanH / f.height)
+            .setDepth(EDGE_DEPTH)
+        );
+      };
+      place(edgesR, edgeBagR, left + width, true);
+      place(edgesL, edgeBagL, left, false);
+    }
 
     // Growth along the lip. Kept a tile clear of both ends: a mushroom cluster centred on
     // the last column of a run hangs half of itself over the pit beyond it.

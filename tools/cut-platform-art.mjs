@@ -36,7 +36,15 @@ const SHEETS = [
   '11-underhang-near.png',
   '05-family-sheet-1.png',
   '06-family-sheet-2.png',
-  '07-family-sheet-3.png'
+  '07-family-sheet-3.png',
+  // Pit edges. Three looks per side, all used together: 36 right pieces and 38 left means
+  // no pit in the level ever repeats a shape.
+  '12-pit-edge-right.png',
+  '12b-pit-edge-right.png',
+  '12c-pit-edge-right.png',
+  '13-pit-edge-left.png',
+  '13b-pit-edge-left.png',
+  '13c-pit-edge-left.png'
 ];
 
 const browser = await chromium.launch({
@@ -76,7 +84,25 @@ const TARGET = {
   // a ledge's 87px. Their side edges come already feathered, so no more is added here.
   '09-underhang-far.png': { h: 96 },
   '10-underhang-mid.png': { h: 96 },
-  '11-underhang-near.png': { h: 104 }
+  '11-underhang-near.png': { h: 104 },
+  // Pit edges, baked at the bedrock end-face height so a ledge just crops.
+  //
+  // `lipClear` is the gameplay rule, enforced here rather than trusted to the art. The
+  // pieces are laid across a platform's vertical end with `edgeFrac` of their width over
+  // the platform and the rest hanging into the pit — but at the walking surface the art
+  // must not extend past the true edge, or the player sees ground that is not there. So
+  // the overhang side is erased for the top `lipClear` rows, faded in over the last few so
+  // the cut is not itself a line. The artist was asked for this and drew full-width columns
+  // instead; doing it here is more reliable than asking twice.
+  //
+  // `stem` keeps the six sheets apart: their names differ only by a letter that the usual
+  // leading-digits strip would remove, collapsing all three right sheets onto one name.
+  '12-pit-edge-right.png': { h: 128, stem: 'edge-r-a', edgeFrac: 0.5, lipClear: 10 },
+  '12b-pit-edge-right.png': { h: 128, stem: 'edge-r-b', edgeFrac: 0.5, lipClear: 10 },
+  '12c-pit-edge-right.png': { h: 128, stem: 'edge-r-c', edgeFrac: 0.5, lipClear: 10 },
+  '13-pit-edge-left.png': { h: 128, stem: 'edge-l-a', edgeFrac: 0.5, lipClear: 10 },
+  '13b-pit-edge-left.png': { h: 128, stem: 'edge-l-b', edgeFrac: 0.5, lipClear: 10 },
+  '13c-pit-edge-left.png': { h: 128, stem: 'edge-l-c', edgeFrac: 0.5, lipClear: 10 }
 };
 
 /** Foreground dilation radius, per sheet. See the note beside its use. */
@@ -283,6 +309,22 @@ const result = await page.evaluate(async (sheets) => {
       // Fade the TOP edge to transparent. A piece laid over the platform face with a hard
       // top draws a ruled line across it, and every piece in a run shares that line because
       // they all sit at the same height. Fading it means there is no edge to align.
+      // Erase the pit-side overhang for the top rows: see `lipClear` in TARGET.
+      const LC = k.target.lipClear || 0;
+      if (LC > 0 && dh > LC) {
+        const isRight = (k.target.stem || '').startsWith('edge-r');
+        const edge = Math.round(dw * (isRight ? k.target.edgeFrac : 1 - k.target.edgeFrac));
+        const md = sx2.getImageData(0, 0, dw, dh);
+        for (let y = 0; y < LC; y++) {
+          const t = Math.min(1, (LC - y) / 6);
+          for (let xx = 0; xx < dw; xx++) {
+            const beyond = isRight ? xx > edge : xx < edge;
+            if (beyond) md.data[(y * dw + xx) * 4 + 3] *= 1 - t;
+          }
+        }
+        sx2.putImageData(md, 0, 0);
+      }
+
       const FT = k.target.featherTop || 0;
       if (FT > 0 && dh > FT) {
         const td = sx2.getImageData(0, 0, dw, dh);
@@ -335,7 +377,7 @@ for (const s of result) {
 if (!listOnly) {
   fs.mkdirSync(OUT, { recursive: true });
   for (const s of result) {
-    const stem = s.sheet.replace(/^\d+-/, '').replace(/\.png$/, '');
+    const stem = TARGET[s.sheet]?.stem || s.sheet.replace(/^\d+-/, '').replace(/\.png$/, '');
     s.cuts.forEach((k, i) => {
       const buf = Buffer.from(k.url.split(',')[1], 'base64');
       fs.writeFileSync(path.join(OUT, `${stem}-${String(i).padStart(2, '0')}.webp`), buf);

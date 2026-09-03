@@ -127,6 +127,7 @@ export const ART_FILES = {
   //   panel    9 wide feature panels — light falls, blooms, mushroom shelves (sheets 05/06)
   //   growth   9 overlays that stand on or hang off a lip (sheet 03)
   //   far/mid/near  12/12/16 underhang pieces at three depths (sheets 09/10/11)
+  //   edgeR/edgeL   36/38 pit-edge pieces, three looks per side (sheets 12/12b/12c, 13/13b/13c)
   ...Object.fromEntries([
     ...Array.from({ length: 39 }, (_, i) => [
       `wall${i}`,
@@ -144,6 +145,17 @@ export const ART_FILES = {
       `growth${i}`,
       { key: `art_growth_${i}`, path: `assets/art/platform/overlays-fungus-drips-streaks-0${i}.webp` }
     ]),
+    // Pit edges: ragged rock laid over a platform's vertical end, half of it hanging into
+    // the pit. Three looks per side, all used together so no pit repeats a shape. The
+    // gameplay rule — nothing overhangs at the walking surface — is baked into the cut.
+    ...[['edgeR', 'edge-r-a', 12], ['edgeR', 'edge-r-b', 12], ['edgeR', 'edge-r-c', 12],
+        ['edgeL', 'edge-l-a', 13], ['edgeL', 'edge-l-b', 13], ['edgeL', 'edge-l-c', 12]]
+      .flatMap(([group, stem, n], gi) =>
+        Array.from({ length: n }, (_, i) => [
+          `${group}_${gi}_${i}`,
+          { key: `art_${stem}_${i}`, path: `assets/art/platform/${stem}-${String(i).padStart(2, '0')}.webp` }
+        ])
+      ),
     // Underhangs, three depths, all drawn IN FRONT of the platform. See platform-dressing.js.
     ...[['far', 12], ['mid', 12], ['near', 16]].flatMap(([name, n]) =>
       Array.from({ length: n }, (_, i) => [
@@ -1148,6 +1160,8 @@ function makeStrideFrames(scene) {
  */
 const WALL_COUNT = 39;
 const PANEL_COUNT = 9;
+const EDGE_R = ['edge-r-a:12', 'edge-r-b:12', 'edge-r-c:12'];
+const EDGE_L = ['edge-l-a:13', 'edge-l-b:13', 'edge-l-c:12'];
 const FAR_COUNT = 12;
 const MID_COUNT = 12;
 const NEAR_COUNT = 16;
@@ -1157,7 +1171,15 @@ function makeWallAtlas(scene) {
     ...Array.from({ length: PANEL_COUNT }, (_, i) => [`p${i}`, ART_FILES[`panel${i}`].key]),
     ...Array.from({ length: FAR_COUNT }, (_, i) => [`f${i}`, ART_FILES[`far${i}`].key]),
     ...Array.from({ length: MID_COUNT }, (_, i) => [`m${i}`, ART_FILES[`mid${i}`].key]),
-    ...Array.from({ length: NEAR_COUNT }, (_, i) => [`n${i}`, ART_FILES[`near${i}`].key])
+    ...Array.from({ length: NEAR_COUNT }, (_, i) => [`n${i}`, ART_FILES[`near${i}`].key]),
+    ...EDGE_R.flatMap((spec, gi) => {
+      const n = Number(spec.split(':')[1]);
+      return Array.from({ length: n }, (_, i) => [`er${gi}_${i}`, ART_FILES[`edgeR_${gi}_${i}`].key]);
+    }),
+    ...EDGE_L.flatMap((spec, gi) => {
+      const n = Number(spec.split(':')[1]);
+      return Array.from({ length: n }, (_, i) => [`el${gi + 3}_${i}`, ART_FILES[`edgeL_${gi + 3}_${i}`].key]);
+    })
   ];
   const imgs = names.map(([frame, key]) => ({ frame, img: sourceImage(scene, key) })).filter((e) => e.img);
   if (!imgs.length) return;
