@@ -27,6 +27,8 @@ const zlib = require('node:zlib');
 const args = process.argv.slice(2);
 const url = args.includes('--url') ? args[args.indexOf('--url') + 1] : 'http://localhost:4173';
 const FACE_LIMIT = 0.4;
+const WALL_MIN_SPREAD = 0.8; // px/row the pit-wall edge must move; ~0 is a ruled line
+const SEAM_LIMIT = 40;
 
 function decode(buf) {
   let p = 8;
@@ -104,7 +106,7 @@ const coverage = await page.evaluate(() => {
   }
   const caps = s.children.list.filter((o) => o.frame && /^t[lr]\d/.test(String(o.frame.name)));
   const bare = corners.filter((c) => !caps.some((o) => Math.abs(o.x - c.x) <= 22 && Math.abs(o.y - c.lipY) <= 22));
-  return { total: corners.length, bare: bare.map((c) => `${c.side}@tile${c.tx}`) };
+  return { total: corners.length, bare: bare.map((c) => `${c.side}@tile${c.tx}`), sample: corners.filter((_, i) => i % 6 === 0).slice(0, 8) };
 });
 
 await page.evaluate(() => {
@@ -145,7 +147,85 @@ console.log(`lip rows (inherent, the collision plane): ${lip.map((r) => `${r.rel
 const face = rows.filter((r) => r.rel > 1 && r.frac > FACE_LIMIT);
 console.log(`face rows over ${FACE_LIMIT * 100}%: ${face.length}${face.length ? ' -> ' + face.map((r) => `lip+${r.rel}:${(r.frac * 100).toFixed(0)}%`).join(' ') : ''}`);
 
+// 3. THE PIT WALL. How far the rock's outer edge wanders down the drop below each corner.
+//    Covering the corner tip left this untouched, and it is the longest straight line at a
+//    pit: the pit-edge column is one frame stretched over the whole face, and stretching
+//    art cannot make a broken edge. Measured as a spread in pixels, not as "fraction of
+//    rows on the median column" — with a boundary that only moves a few pixels either way,
+//    that fraction reads high for ragged and ruled alike, and three rounds of tuning
+//    against it moved nothing.
+const spreads = [];
+for (const c of coverage.sample) {
+  await page.evaluate((s0) => {
+    const sc = window.__game.scene.getScene('Game');
+    const cam = sc.cameras.main;
+    cam.scrollX = s0.x - 400;
+    cam.scrollY = Math.max(0, s0.lipY - 100);
+    sc.player.setPosition(s0.x - 4000, 300);
+  }, c);
+  await page.waitForTimeout(90);
+  const wbox = await page.evaluate((s0) => {
+    const g = window.__game;
+    const cam = g.scene.getScene('Game').cameras.main;
+    const r = g.canvas.getBoundingClientRect();
+    const k = g.scale.displaySize.width / g.scale.gameSize.width;
+    return { x: r.left + (s0.x - 26 - cam.scrollX) * k, y: r.top + (s0.lipY + 26 - cam.scrollY) * k, width: 52 * k, height: 130 * k };
+  }, c);
+  const im = decode(await page.screenshot({ clip: wbox }));
+  const wl = (x, y) =>
+    0.2126 * im.out[y * im.stride + x * im.bpp] + 0.7152 * im.out[y * im.stride + x * im.bpp + 1] + 0.0722 * im.out[y * im.stride + x * im.bpp + 2];
+  const seq = [];
+  for (let y = 0; y < im.h; y++) {
+    let lo = 255;
+    let hi = 0;
+    for (let x = 0; x < im.w; x++) { const v = wl(x, y); if (v < lo) lo = v; if (v > hi) hi = v; }
+    const T = (lo + hi) / 2;
+    for (let x = im.w - 1; x >= 0; x--) if (wl(x, y) < T) { seq.push(x); break; }
+  }
+  // Roughness, in pixels per row, IN ROW ORDER. The p90-p10 spread does not discriminate:
+  // one long smooth bulge scores as high as a rocky outline, so it passed unchanged with
+  // the wall art removed entirely. How far the edge moves from each row to the next is
+  // what separates a ruled line (near 0) from rock.
+  let rough = 0;
+  for (let i = 1; i < seq.length; i++) rough += Math.abs(seq[i] - seq[i - 1]);
+  spreads.push({ c, spread: seq.length > 1 ? rough / (seq.length - 1) : 0 });
+}
+const ruledWalls = spreads.filter((s0) => s0.spread <= WALL_MIN_SPREAD);
+console.log(`pit walls sampled: ${spreads.length}, edge roughness ${spreads.map((s0) => s0.spread.toFixed(1)).join(' ')} px/row`);
+
+// 4. VERTICAL SEAMS on the face, where one wall panel meets the next.
+await page.evaluate(() => {
+  const sc = window.__game.scene.getScene('Game');
+  const cam = sc.cameras.main;
+  cam.scrollX = 300 * 32;
+  cam.scrollY = Math.max(0, 14 * 32 - 120);
+  sc.player.setPosition(300 * 32 - 4000, 300);
+});
+await page.waitForTimeout(300);
+const sbox = await page.evaluate(() => {
+  const g = window.__game;
+  const cam = g.scene.getScene('Game').cameras.main;
+  const r = g.canvas.getBoundingClientRect();
+  const k = g.scale.displaySize.width / g.scale.gameSize.width;
+  return { x: r.left + 60 * k, y: r.top + (14 * 32 + 14 - cam.scrollY) * k, width: 720 * k, height: 90 * k };
+});
+const si = decode(await page.screenshot({ clip: sbox }));
+const sl = (x, y) =>
+  0.2126 * si.out[y * si.stride + x * si.bpp] + 0.7152 * si.out[y * si.stride + x * si.bpp + 1] + 0.0722 * si.out[y * si.stride + x * si.bpp + 2];
+let stot = 0;
+const scols = [];
+for (let x = 1; x < si.w - 1; x++) {
+  const col = [];
+  for (let y = 0; y < si.h; y++) { const d = Math.abs(sl(x + 1, y) - sl(x - 1, y)); col.push(d); stot += d; }
+  scols.push(col);
+}
+const smean = stot / (scols.length * si.h);
+const seams = scols.filter((col) => col.filter((d) => d > 2 * smean).length / si.h > 0.4).length;
+console.log(`vertical seams on the face: ${seams} of ${scols.length} columns`);
+
 const problems = [];
+if (ruledWalls.length) problems.push(`${ruledWalls.length} pit wall(s) with a ruled vertical edge`);
+if (seams > SEAM_LIMIT) problems.push(`${seams} vertical seams on the face (limit ${SEAM_LIMIT})`);
 if (coverage.bare.length) problems.push(`${coverage.bare.length} pit corner(s) with no cap`);
 if (face.length) problems.push(`${face.length} ruled row(s) on the face`);
 if (errors.length) problems.push(`page errors: ${errors.join('; ')}`);

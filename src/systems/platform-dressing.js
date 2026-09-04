@@ -109,6 +109,22 @@ const CAP_RISE = 10; // and this far below the lip, so the lobe stands ~7px prou
 const CAP_DEPTH = 4;
 
 /**
+ * The drop below the corner.
+ *
+ * Covering the tip left the rest of the pit wall untouched, and that wall is a ruled line
+ * for its whole height: the pit-edge column is a single frame stretched over the entire
+ * face, so whatever raggedness its silhouette has gets stretched into two long smooth
+ * vertical runs. Stretching art cannot produce a broken edge — only more art can.
+ *
+ * So the same lobes that cover the tip are chained down the drop, overlapping, at varying
+ * size and offset, and flipped both ways. What the eye follows down the pit is then the
+ * ragged outline of a stack of rocks rather than the side of a rectangle.
+ */
+const WALL_STEP = 14;
+const WALL_INSET = 4;
+const WALL_DEPTH = 3.8;
+
+/**
  * Lip nubs. `TUFT_SIT` is the origin's y, and Phaser measures it from the top: 0.14 puts
  * 14% of the piece above the surface and the rest below, so only its top few pixels break
  * the line.
@@ -135,7 +151,7 @@ const FEATURE_INSET_PX = 10;
  * Butted edge to edge instead, each panel's own dark border drew a hard vertical line down
  * the rock at every join — a grid, in art meant to read as one continuous wall.
  */
-const OVERLAP_PX = 6;
+const OVERLAP_PX = 13;
 
 /**
  * Growth keeps this far from any hazard's centre.
@@ -456,6 +472,40 @@ export function dressPlatforms(scene, map, layer, defs = []) {
       };
       cap(capsR, capBagR, left + width, true);
       cap(capsL, capBagL, left, false);
+
+      const wall = (frames, pick, edgeX, right) => {
+        if (!frames.length) return;
+        const to = bottomY + EDGE_SPAN_BELOW;
+        for (let y = run.top * TILE + 22; y < to; y += WALL_STEP + rng.frac() * 8) {
+          const frame = frames[pick()];
+          // The spread matters more than the offset. A first version varied these narrowly
+          // and every lobe reached about the same distance into the pit, so their outer
+          // extents lined up and the result was the same ruled edge moved 18px out. What
+          // makes the outline ragged is neighbouring lobes reaching visibly different
+          // distances, so offset and scale both range wide.
+          // Some of them have to reach FURTHER OUT than the rock already there, or they
+          // are simply buried behind it: the first version put every lobe inside the
+          // existing silhouette (reaching +7 to +17 against its +18) and changed nothing
+          // measurable. The range straddles that boundary now, so the outline is made of
+          // lobes rather than of whatever was underneath.
+          // Reckoned against the lobe's OPAQUE reach, not its frame. The mask ramps alpha
+          // to nothing over the outer third, so a 36px frame only silhouettes about 10px
+          // either side of centre — twice now the range looked like it cleared the rock at
+          // +18 and in fact stopped a pixel short of it, which is why nothing moved.
+          const off = rng.frac() * 22 - 14; // negative reaches out over the pit
+          made.push(
+            scene.add
+              .image(edgeX + (right ? -off : off), y, KEYS.wallAtlas, frame)
+              .setOrigin(0.5, 0.5)
+              .setScale(0.9 + rng.frac() * 0.8)
+              .setDepth(WALL_DEPTH)
+              .setFlipX(rng.frac() > 0.5)
+              .setFlipY(rng.frac() > 0.5)
+          );
+        }
+      };
+      wall(capsR, capBagR, left + width, true);
+      wall(capsL, capBagL, left, false);
 
       // Broken rock along the lip, densest near the ends where debris would collect.
       if (rubbleAll.length && run.w >= 3) {
