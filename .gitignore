@@ -11,3 +11,6 @@ android/
 
 # Screenshots produced by the test harnesses
 tools/shots/
+
+# Rendered audition audio; regenerate with `npm run sfx`.
+tools/sfx/

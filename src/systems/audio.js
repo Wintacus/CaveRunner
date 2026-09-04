@@ -79,7 +79,21 @@ const SOUNDS = {
     floor: -5,
     top: 2
   },
+  /**
+   * Checkpoint. The odd one out: a bare triangle-wave arpeggio straight to the master, on
+   * C-E-A, while every other cue in the game is a bell on the pentatonic table through the
+   * shared reverb. That is why it reads as a jingle borrowed from another game rather than
+   * as this cave telling you something.
+   *
+   * Three candidates below, all in the family. Two of them get deleted once one is picked.
+   */
   checkpoint: { type: 'arp', notes: [523, 659, 880], step: 0.075, dur: 0.2, gain: 0.22 },
+  /** A: three bells climbing to the octave, the last left ringing. Progress, locked in. */
+  checkpointA: { type: 'arrive', shape: 'rise', gain: 1, wet: 0.6 },
+  /** B: a low bloom opening underneath, two bright lights coming up out of it. Shelter. */
+  checkpointB: { type: 'arrive', shape: 'bloom', gain: 1, wet: 0.66 },
+  /** C: two notes, a rising fourth, generous decay. The quietest thing that still lands. */
+  checkpointC: { type: 'arrive', shape: 'bell', gain: 1, wet: 0.62 },
   /**
    * Shield pickup. The reward, so it belongs to the crystal's family — pentatonic, through
    * the shared reverb — but warmer, wider and SUSTAINED: a noise swell closing around you,
@@ -455,6 +469,24 @@ class AudioManager {
           osc.stop(at + def.dur + 0.02);
         });
         this.#noise(t, 0.2, def.noise * volume, 5200);
+        break;
+      }
+      case 'arrive': {
+        const g = def.gain * volume;
+        if (def.shape === 'rise') {
+          [0, 2, 5].forEach((d, i) =>
+            this.#ping(t + i * 0.085, pentatonic(d - 5) * pitch, 0.13 * g * (1 - i * 0.05), 1.1 + i * 0.5, 0.005, def.wet));
+          this.#hold(t + 0.17, pentatonic(0) * pitch, 0.03 * g, 0.12, 0.5, 0.9, def.wet);
+        } else if (def.shape === 'bloom') {
+          this.#swell(t, 0.5, 0.07 * g, 500, 2600, def.wet);
+          this.#ping(t, pentatonic(-10) * pitch, 0.1 * g, 1.8, 0.006, def.wet);
+          this.#ping(t + 0.16, pentatonic(2) * pitch, 0.12 * g, 1.6, 0.004, def.wet);
+          this.#ping(t + 0.24, pentatonic(5) * pitch, 0.085 * g, 2.0, 0.004, def.wet);
+        } else {
+          this.#ping(t, pentatonic(-3) * pitch, 0.14 * g, 1.5, 0.005, def.wet);
+          this.#ping(t + 0.13, pentatonic(1) * pitch, 0.13 * g, 2.2, 0.005, def.wet);
+          this.#hold(t + 0.13, pentatonic(1) * pitch, 0.028 * g, 0.15, 0.6, 1.0, def.wet);
+        }
         break;
       }
       case 'arp': {

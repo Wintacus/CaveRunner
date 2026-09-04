@@ -19,7 +19,8 @@
     "test": "npm run build && node tools/run-tests.mjs",
     "pacing": "node tools/pacing-report.mjs",
     "ci": "node tools/ci-status.mjs",
-    "lipcheck": "node tools/check-lip.mjs"
+    "lipcheck": "node tools/check-lip.mjs",
+    "sfx": "node tools/render-sfx.mjs"
   },
   "dependencies": {
     "@capacitor/app": "^8.1.1",

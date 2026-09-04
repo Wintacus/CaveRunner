@@ -1,0 +1,47 @@
+<!doctype html><meta charset="utf-8"><title>sfx render</title>
+<!--
+  Offline renderer for the game's sound effects. Dev-server only: it is not referenced by
+  index.html so it never ships.
+
+  Auditioning a sound by deploying and playing to a checkpoint is slow and, on a phone,
+  hard to compare — you cannot hear two candidates back to back. This renders any entry in
+  SOUNDS straight out of the real synth into a WAV, so candidates can be listened to side
+  by side. The AudioContext swap is what makes it work: the manager builds its own context
+  in init(), so window.AudioContext is briefly replaced with one that hands back an
+  OfflineAudioContext, and audio.ctx is nulled first because init() early-returns when a
+  context already exists.
+
+  Driven by tools/render-sfx.mjs (npm run sfx).
+-->
+<script type="module">
+import { audio } from '/src/systems/audio.js';
+const SR = 44100;
+function wav(buf) {
+  const n = buf.length, ch = buf.numberOfChannels;
+  const data = new Float32Array(n * ch);
+  for (let c = 0; c < ch; c++) { const d = buf.getChannelData(c); for (let i = 0; i < n; i++) data[i * ch + c] = d[i]; }
+  const out = new DataView(new ArrayBuffer(44 + data.length * 2));
+  const str = (o, s) => { for (let i = 0; i < s.length; i++) out.setUint8(o + i, s.charCodeAt(i)); };
+  str(0, 'RIFF'); out.setUint32(4, 36 + data.length * 2, true); str(8, 'WAVEfmt ');
+  out.setUint32(16, 16, true); out.setUint16(20, 1, true); out.setUint16(22, ch, true);
+  out.setUint32(24, SR, true); out.setUint32(28, SR * ch * 2, true); out.setUint16(32, ch * 2, true);
+  out.setUint16(34, 16, true); str(36, 'data'); out.setUint32(40, data.length * 2, true);
+  for (let i = 0; i < data.length; i++) out.setInt16(44 + i * 2, Math.max(-1, Math.min(1, data[i])) * 32767, true);
+  let bin = ''; const u8 = new Uint8Array(out.buffer);
+  for (let i = 0; i < u8.length; i++) bin += String.fromCharCode(u8[i]);
+  return btoa(bin);
+}
+window.render = async (name, seconds) => {
+  const off = new OfflineAudioContext(2, SR * seconds, SR);
+  const Real = window.AudioContext;
+  window.AudioContext = function () { return off; };
+  audio.ctx = null; // init() early-returns if a context already exists
+  audio.init();
+  audio.unlocked = true;
+  audio.enabled = true;
+  window.AudioContext = Real;
+  audio.play(name);
+  return wav(await off.startRendering());
+};
+window.ready = true;
+</script>
