@@ -497,18 +497,33 @@ export function dressPlatforms(scene, map, layer, defs = []) {
             // to over 80, so a shared factor made some of them wide flat slabs lying along
             // the lip — which smears the line rather than breaking it. A nub has to be
             // narrower than the gap to the next one or it is just a second line.
-            const wPx = 9 + rng.frac() * 12;
-            const hPx = 30 + rng.frac() * 18; // TUFT_SIT of this stands proud: ~4-7px
+            // A nub does not remove the edge, it moves it: the piece is dark against a
+            // bright background, so its own top is a step too. Short, sparse nubs just
+            // shift the step a row or two and the line survives — measured at 83% of
+            // columns ruled without them and 81% with, which is nothing. What breaks a
+            // line is the step landing on a *different row in every column*, so the rise
+            // varies widely and they run close enough together to cover most of the lip.
+            const wPx = 8 + rng.frac() * 18;
+            // Vertical scale stays near 1 and the *anchor* carries the variation. Deriving
+            // the height from the rise instead stretched a 26px frame to 64, which turned
+            // its 8px top feather into a 20px transparent gradient — the nubs were there,
+            // 31 of them across this strip, and the background still read straight through
+            // to the lip. Flipped so the frame's solid end points up: these were cut as
+            // rubble sitting under a shoulder, soft at the top, and it is the top that has
+            // to be opaque here.
+            const sy = 0.8 + rng.frac() * 0.55;
+            const rise = 2 + rng.frac() * 7;
             made.push(
               scene.add
                 .image(tx, run.top * TILE + 1, KEYS.wallAtlas, frame)
-                .setOrigin(0.5, TUFT_SIT)
-                .setScale(wPx / f.width, hPx / f.height)
+                .setOrigin(0.5, Math.min(0.6, rise / (f.height * sy)))
+                .setScale(wPx / f.width, sy)
                 .setDepth(TUFT_DEPTH)
                 .setFlipX(rng.frac() > 0.5)
+                .setFlipY(true)
             );
           }
-          tx += 30 + rng.frac() * 52;
+          tx += 14 + rng.frac() * 26;
         }
       }
     }
