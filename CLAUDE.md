@@ -27,6 +27,30 @@ possible. If a fix is obvious, still say what it is and wait for a yes.
 - The level is validated by physics, not by eye: `npm run validate` simulates the real jump
   arc. When a fairness bug turns up, prefer adding a rule that catches the whole class of it
   to fixing the one instance by hand.
+- Before telling me a fix is ready to try, **check what the preview actually serves**. A
+  deploy once ran 23 seconds after a commit, so it held the commit *before* the fix, and a
+  whole day went by with me reporting a corner still broken while the build I was playing
+  had none of the work in it. Pushing the dev branch is not deploying, and a green deploy is
+  not proof it contains your commit — compare the run's timestamp against the commit's.
+- `npm run lipcheck` checks rendered pixels for the straight-line class: every pit corner has
+  art on it, no ruled rows on the platform face, pit walls ragged, panel seams bounded. It is
+  **manual** — it needs a build plus a running preview server, and is not in `npm test` or
+  CI. Worth running before a deploy that touches art or level geometry. Its real weakness:
+  the face and seam checks sample a hardcoded spot (tile 300, lip row 14), so if the level
+  changes there they measure the wrong pixels and pass regardless. Fix that before trusting
+  it in CI. The corner-coverage check is the strong one — it reads corners from the tilemap,
+  so a new pit with no art on it fails.
+- **Any check of rendered pixels has to be shown to fail when the thing it guards is
+  removed.** Three of the four ways the pit edge was measured were worthless, and one of them
+  passed with the art deleted entirely. Two traps behind that, both hit for real: scanning
+  for the topmost solid tile finds the *ceiling*, which is present in every column (walkable
+  lips are gids 1 and 5, and getting this wrong reported 2 corners in the whole level); and
+  `setVisible(false)` hides nothing, because the dressing culler sets `.visible` every frame
+  from the camera window — use alpha to make a control group.
+- Sound effects can be auditioned without deploying: `npm run sfx` renders any entry in
+  `SOUNDS` to a WAV through the real synth (needs `npx vite` running). Candidates cannot be
+  judged on a phone one deploy at a time, and it prints each render's peak, which is how the
+  checkpoint got caught sitting 1.5dB under the biggest reward in the game.
 
 ## Keep my context window cheap
 
