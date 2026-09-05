@@ -59,7 +59,6 @@ const SOUNDS = {
    */
   crystal: {
     type: 'twinkle',
-    grains: 3,
     spread: 0.075,
     decay: 0.45,
     gain: 0.055,
@@ -76,8 +75,28 @@ const SOUNDS = {
      * rather than cutting through it. The gain was NOT raised to compensate for sitting
      * lower — the reduced presence is the point, not a side effect to correct.
      */
-    floor: -5,
-    top: 2
+    floor: -7,
+    top: 3,
+    /**
+     * How much of the range a figure may START on, and how far each step may climb.
+     *
+     * These exist because the old scheme produced only NINETEEN distinct figures for the
+     * whole game. Always three notes, always rising, always by one or two degrees, from one
+     * of five possible starting notes: 5 starts x 4 interval patterns, minus one lost to the
+     * ceiling clamp. At 246 pickups a run that is thirteen repeats each, and the commonest
+     * figure fired about twenty-one times a run — well past where the ear starts hearing a
+     * loop rather than a texture.
+     *
+     * Widening the pitch range alone was not enough (32 figures). The SHAPE was the bigger
+     * half of it: letting the note count vary is what takes it to ~240, because it multiplies
+     * every start and interval combination rather than adding to them. It costs no extra
+     * length — the notes are spread across a fixed window, so four of them are just denser
+     * than three, not longer.
+     */
+    startWindow: 0.75,
+    steps: [1, 2, 3],
+    /** Weighted: three notes stays the norm, two and four are the variation. */
+    grainChoices: [2, 3, 3, 4]
   },
   /**
    * Checkpoint. Three bells climbing to the octave, the last one left ringing.
@@ -356,16 +375,22 @@ class AudioManager {
       case 'twinkle': {
         // Start somewhere in the lower part of the scale, then step upward: rising reads as
         // "gained something" where falling reads as losing it.
-        // Start somewhere in the lower part of the range, so there is room to climb.
-        let rung = def.floor + Math.floor(Math.random() * (def.top - def.floor + 1) * 0.6);
-        for (let g = 0; g < def.grains; g++) {
-          const at = t + (g * def.spread) / (def.grains - 1);
+        const span = def.top - def.floor + 1;
+        let rung = def.floor + Math.floor(Math.random() * span * def.startWindow);
+        const grains = def.grainChoices[Math.floor(Math.random() * def.grainChoices.length)];
+        for (let g = 0; g < grains; g++) {
+          // Spread is the whole window, not a per-note gap, so a four-note figure is denser
+          // than a three-note one rather than longer. That matters at this rate: pickups can
+          // land 17ms apart, and lengthening the figure would pile them up.
+          const at = t + (g * def.spread) / (grains - 1);
           if (g > 0) {
-            rung = Math.min(def.top, rung + 1 + Math.floor(Math.random() * 2));
+            rung = Math.min(def.top, rung + def.steps[Math.floor(Math.random() * def.steps.length)]);
           }
           // A few cents of wobble, so no two pickups are ever bit-identical.
           const freq = pentatonic(rung) * pitch * (0.997 + Math.random() * 0.006);
-          const amp = def.gain * volume * (1 - g * 0.11);
+          // Held against the three-note case, so a four-note figure is not louder for having
+          // an extra bell in it.
+          const amp = def.gain * volume * (1 - g * 0.11) * (3 / grains);
           for (const [mult, partialAmp, attack] of TWINKLE_PARTIALS) {
             this.#bell(at, freq * mult, amp * partialAmp, attack, def.decay, def.wet);
           }

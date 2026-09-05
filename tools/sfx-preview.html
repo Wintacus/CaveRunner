@@ -31,6 +31,48 @@ function wav(buf) {
   for (let i = 0; i < u8.length; i++) bin += String.fromCharCode(u8[i]);
   return btoa(bin);
 }
+/**
+ * Many pickups in a row, at the spacing a real run produces.
+ *
+ * Repetition is invisible one sound at a time — the crystal only ever sounded repetitive
+ * because you hear 246 of them in seventy seconds. play() reads ctx.currentTime to schedule,
+ * and an OfflineAudioContext's clock stays at 0 until rendering starts, so every call would
+ * otherwise stack at t=0. Shadowing currentTime with an own property lets the calls be
+ * placed along the timeline.
+ */
+window.renderSeq = async (name, seconds, seed) => {
+  const off = new OfflineAudioContext(2, SR * seconds, SR);
+  let now = 0;
+  Object.defineProperty(off, 'currentTime', { get: () => now, configurable: true });
+  const Real = window.AudioContext;
+  window.AudioContext = function () { return off; };
+  audio.ctx = null;
+  audio.init();
+  audio.unlocked = true;
+  audio.enabled = true;
+  window.AudioContext = Real;
+  // TWO generators, deliberately. The spacing must not share a stream with the synth: a
+  // change that draws a different number of randoms per pickup then shifts every subsequent
+  // gap too, and the before/after ends up differing in pickup count and rhythm as well as in
+  // pitch — which is not a comparison of anything. Timing is identical across renders; only
+  // what the synth does with its own stream changes.
+  const lcg = (st) => () => (((st = (st * 1664525 + 1013904223) >>> 0) >>> 8) / 16777216);
+  const gap = lcg(seed >>> 0);
+  const realRandom = Math.random;
+  Math.random = lcg((seed * 7919 + 13) >>> 0);
+  let n = 0;
+  while (now < seconds - 1.2) {
+    audio.play(name);
+    n++;
+    // Trails cluster, then a gap: mostly ~0.25s apart, sometimes a burst, sometimes a rest.
+    const r = gap();
+    now += r < 0.25 ? 0.1 + gap() * 0.05 : r < 0.85 ? 0.2 + gap() * 0.14 : 0.5 + gap() * 0.35;
+  }
+  Math.random = realRandom;
+  const buf = await off.startRendering();
+  return { wav: wav(buf), count: n };
+};
+
 window.render = async (name, seconds) => {
   const off = new OfflineAudioContext(2, SR * seconds, SR);
   const Real = window.AudioContext;
