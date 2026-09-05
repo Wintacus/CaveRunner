@@ -10,6 +10,14 @@
  * and its creature dodging is crude, so its death count is a rough signal only.
  *
  * Usage: node tools/autoplay.mjs [--url http://localhost:4173] [--fps 60]
+ *        node tools/autoplay.mjs --mix out.wav [--mix-seconds 45]
+ *
+ * --mix renders the WHOLE MIX of a real run — music bed and every sound effect, at the
+ * times actual play produces them — to a WAV. It works by handing the game an
+ * OfflineAudioContext whose clock IS the stepped game clock, so although the run
+ * simulates at ~50x real time, each sound still lands at its true moment. A live
+ * recording cannot do this: Web Audio schedules against the real audio clock, so a
+ * sped-up run would stack seventy seconds of effects into one or two.
  */
 import { chromium } from 'playwright';
 import fs from 'node:fs';
@@ -22,6 +30,9 @@ const arg = (n, d) => {
 };
 const url = arg('url', 'http://localhost:4173');
 const fps = Number(arg('fps', 60));
+const mixOut = arg('mix', null);
+const mixSeconds = Number(arg('mix-seconds', 45));
+const SR = 44100;
 const shotDir = path.resolve('tools/shots');
 fs.mkdirSync(shotDir, { recursive: true });
 
@@ -29,6 +40,32 @@ const browser = await chromium.launch({
   executablePath: process.env.CHROMIUM_PATH || '/opt/pw-browsers/chromium-1194/chrome-linux/chrome'
 });
 const page = await browser.newPage({ viewport: { width: 960, height: 540 } });
+
+if (mixOut) {
+  // Must be installed before the page scripts run: the audio manager builds its context on
+  // first unlock, and it has to build it on ours. currentTime is shadowed with an own
+  // property so the stepping loop can drive the audio clock from the game clock, and the
+  // music scheduler's setInterval is captured rather than started — wall-clock ticks would
+  // never fire during a run that simulates in a couple of seconds.
+  await page.addInitScript(([sr, secs]) => {
+    const off = new OfflineAudioContext(2, Math.ceil(sr * secs), sr);
+    window.__now = 0;
+    window.__mixSeconds = secs;
+    Object.defineProperty(off, 'currentTime', { get: () => window.__now, configurable: true });
+    // unlock() resumes the context on the first gesture, which an offline context refuses.
+    // Harmless to the render, but it surfaces as a runtime error and fails the run.
+    off.resume = () => Promise.resolve();
+    window.__off = off;
+    window.AudioContext = function () { return off; };
+    window.webkitAudioContext = window.AudioContext;
+    window.__musicTicks = [];
+    const realSetInterval = window.setInterval;
+    window.setInterval = (fn, ms) => {
+      if (ms <= 100) { window.__musicTicks.push(fn); return 0; }
+      return realSetInterval(fn, ms);
+    };
+  }, [SR, mixSeconds]);
+}
 
 const errors = [];
 page.on('console', (m) => m.type() === 'error' && errors.push(m.text()));
@@ -213,6 +250,13 @@ const result = await page.evaluate(async (frameMs) => {
   while (steps < maxSteps) {
     decide(frameMs);
     t += frameMs;
+    if (window.__off) {
+      // The audio clock follows the game clock, and the music scheduler is ticked by hand
+      // for the same reason: both are driven by the simulation, not by wall time.
+      window.__now = t / 1000;
+      for (const fn of window.__musicTicks) fn();
+      if (window.__now >= window.__mixSeconds) break;
+    }
     g.step(t, frameMs);
     steps++;
     furthestTile = Math.max(furthestTile, Math.round(scene.player.x / TILE));
@@ -260,6 +304,48 @@ const result = await page.evaluate(async (frameMs) => {
 
 console.log(JSON.stringify(result, null, 2));
 await page.screenshot({ path: path.join(shotDir, '10-autoplay-end.png') });
+
+if (mixOut) {
+  const b64 = await page.evaluate(async () => {
+    const buf = await window.__off.startRendering();
+    const n = buf.length;
+    const ch = buf.numberOfChannels;
+    const inter = new Float32Array(n * ch);
+    for (let c = 0; c < ch; c++) {
+      const d = buf.getChannelData(c);
+      for (let i = 0; i < n; i++) inter[i * ch + c] = d[i];
+    }
+    const view = new DataView(new ArrayBuffer(44 + inter.length * 2));
+    const str = (o, v) => { for (let i = 0; i < v.length; i++) view.setUint8(o + i, v.charCodeAt(i)); };
+    str(0, 'RIFF'); view.setUint32(4, 36 + inter.length * 2, true); str(8, 'WAVEfmt ');
+    view.setUint32(16, 16, true); view.setUint16(20, 1, true); view.setUint16(22, ch, true);
+    view.setUint32(24, buf.sampleRate, true); view.setUint32(28, buf.sampleRate * ch * 2, true);
+    view.setUint16(32, ch * 2, true); view.setUint16(34, 16, true);
+    str(36, 'data'); view.setUint32(40, inter.length * 2, true);
+    for (let i = 0; i < inter.length; i++) {
+      view.setInt16(44 + i * 2, Math.max(-1, Math.min(1, inter[i])) * 32767, true);
+    }
+    let bin = '';
+    const u8 = new Uint8Array(view.buffer);
+    const CHUNK = 8192; // one giant apply() blows the argument limit on a minutes-long mix
+    for (let i = 0; i < u8.length; i += CHUNK) bin += String.fromCharCode(...u8.subarray(i, i + CHUNK));
+    return btoa(bin);
+  });
+  const wav = Buffer.from(b64, 'base64');
+  fs.writeFileSync(mixOut, wav);
+  let peak = 0;
+  let sum = 0;
+  let cnt = 0;
+  for (let i = 44; i + 1 < wav.length; i += 2) {
+    const v = wav.readInt16LE(i) / 32767;
+    peak = Math.max(peak, Math.abs(v));
+    sum += v * v;
+    cnt++;
+  }
+  const db = (x) => (20 * Math.log10(x)).toFixed(1);
+  console.log(`\nmix -> ${mixOut}  ${mixSeconds}s  peak ${db(peak)} dBFS  rms ${db(Math.sqrt(sum / cnt))} dBFS`);
+}
+
 await browser.close();
 
 if (errors.length) {
@@ -267,8 +353,10 @@ if (errors.length) {
   errors.forEach((e) => console.error(`  ${e}`));
   process.exit(1);
 }
-if (!result.winActive) {
+// In --mix mode the run is cut short on purpose at --mix-seconds, so reaching the goal is
+// not expected and not the point.
+if (!mixOut && !result.winActive) {
   console.error('\nautoplay did not reach the win screen');
   process.exit(1);
 }
-console.log('\nautoplay reached the level end with no runtime errors');
+console.log(mixOut ? '\nmix rendered with no runtime errors' : '\nautoplay reached the level end with no runtime errors');
